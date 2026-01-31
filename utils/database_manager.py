@@ -708,13 +708,19 @@ class DatabaseManager:
             conn = self.get_connection()
             cursor = conn.cursor()
             
-            # Update the daily_data row with prediction
+            # Convert 'UP'/'DOWN' to numeric values
+            pred_value = 1 if prediction == 'UP' else -1 if prediction == 'DOWN' else None
+            if pred_value is None:
+                logger.error(f"Invalid prediction value: {prediction}")
+                cursor.close()
+                conn.close()
+                return False
             query = """
                 UPDATE daily_data 
                 SET prediction = %s
                 WHERE date = %s
             """
-            cursor.execute(query, (prediction, date))
+            cursor.execute(query, (pred_value, date))
             
             conn.commit()
             cursor.close()
