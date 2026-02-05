@@ -334,12 +334,14 @@ class OrchestratorAgent(BaseAgent):
         combined_sentiment = sentiment_result.get('combined_score', 0.0)
         
         if is_trading_day:
-            # Update today's sentiment with all three scores
+            # Update today's sentiment with all three scores plus gravity data
             success = self.db.update_sentiment_scores(
                 date, 
                 company_sentiment, 
                 macro_sentiment, 
-                combined_sentiment
+                combined_sentiment,
+                sentiment_result.get('combined_range', ''),
+                sentiment_result.get('combined_entropy', 'Low')
             )
             if success:
                 logger.info(f"✓ Updated sentiment for {date}:")
@@ -368,7 +370,9 @@ class OrchestratorAgent(BaseAgent):
                 last_trading_day, 
                 company_sentiment, 
                 macro_sentiment, 
-                combined_sentiment
+                combined_sentiment,
+                sentiment_result.get('combined_range', ''),
+                sentiment_result.get('combined_entropy', 'Low')
             )
             if success:
                 logger.info(f"✓ Updated last trading day ({last_trading_day}) sentiment: {combined_sentiment:.2f}")
@@ -399,7 +403,9 @@ class OrchestratorAgent(BaseAgent):
             trading_day, 
             company_sentiment, 
             macro_sentiment, 
-            combined_sentiment
+            combined_sentiment,
+            sentiment_result.get('combined_range', ''),
+            sentiment_result.get('combined_entropy', 'Low')
         )
         
         if success:
@@ -561,14 +567,19 @@ class OrchestratorAgent(BaseAgent):
                 
                 if all_articles:
                     logger.info(f"Re-analyzing sentiment with {len(all_articles)} total articles...")
-                    sentiment_result = self.sentiment_agent.analyze_articles_by_type(all_articles)
+                    # Separate into company and macro articles
+                    company_articles = [a for a in all_articles if any(keyword in a['title'].lower() for keyword in ['nvidia', 'nvda'])]
+                    macro_articles = [a for a in all_articles if a not in company_articles]
+                    sentiment_result = self.sentiment_agent.analyze_articles_by_type(company_articles, macro_articles)
                     
                     if sentiment_result:
                         self.db.update_sentiment_scores(
                             current_date, 
                             sentiment_result['company_sentiment'],
                             sentiment_result['macro_sentiment'],
-                            sentiment_result['combined_score']
+                            sentiment_result['combined_score'],
+                            sentiment_result.get('combined_range', ''),
+                            sentiment_result.get('combined_entropy', 'Low')
                         )
                         logger.info(f"✓ Updated sentiment including orphaned articles: {sentiment_result['combined_score']:.2f}")
             else:

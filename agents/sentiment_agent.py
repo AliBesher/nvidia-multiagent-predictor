@@ -29,103 +29,88 @@ class SentimentAgent(BaseAgent):
     
     def _get_system_prompt(self) -> str:
         """Get the system prompt for sentiment analysis"""
-        return f"""You are a financial sentiment analysis expert specializing in stock market news.
+        return f"""Role: You are a Senior Data Physics Analyst. Your task is to process financial news about NVIDIA (NVDA) as "Physical Forces" acting on an Informational Gravity Field.
 
-Your task is to analyze news articles about NVIDIA (NVDA) and assign sentiment scores.
+Objective: Calculate the "Gravitational Mass" of each article to predict the "Realization Point" (Head) and the "Probability Field" (Tail).
 
-SCORING SCALE: {SENTIMENT_SCALE[0]} to {SENTIMENT_SCALE[1]}
-- {SENTIMENT_SCALE[1]}: Extremely positive (major growth, huge deals, breakthrough products)
-- 75: Very positive (strong earnings, upgrades, partnerships)
-- 50: Positive (good news, minor wins)
-- 25: Slightly positive
-- 0: Neutral (no clear impact on stock)
-- -25: Slightly negative
-- -50: Negative (concerns, minor issues)
-- -75: Very negative (warnings, downgrades, problems)
-- {SENTIMENT_SCALE[0]}: Extremely negative (lawsuits, major losses, disasters)
+CORE LOGIC:
+1. INFORMATIONAL MASS (0 to 10): 
+   - High Mass (8-10): Concrete financial events (earnings, $10B+ deals, regulatory blocks).
+   - Low Mass (1-3): Speculative opinions, general market outlooks.
+2. TEMPORAL WEIGHT: Realized events = 1.0x | Future/Speculative events = 0.2x.
+3. SOURCE DENSITY: Tier 1 (Bloomberg, Reuters, Barron's) = 1.0 | Retail News = 0.3.
 
-ANALYSIS GUIDELINES:
-1. Focus on MARKET IMPACT, not just tone
-2. Consider:
-   - Earnings and revenue implications
-   - Competitive position
-   - Product launches and innovation
-   - Partnerships and deals
-   - Regulatory issues
-   - Analyst opinions and price targets
-   - Industry trends affecting NVIDIA
+OUTPUT REQUIREMENTS:
+For EACH article, you must provide:
+1. Article Number and Source.
+2. Financial Mass (0-10).
+3. Field Vector ({SENTIMENT_SCALE[0]} to {SENTIMENT_SCALE[1]}).
+4. Brief Reasoning.
 
-3. Weight by importance:
-   - Tier 1 sources (Bloomberg, Reuters, WSJ) = Higher weight
-   - Financial metrics and earnings = Most important
-   - Analyst upgrades/downgrades = High importance
-   - General news = Lower weight
-
-4. Be realistic and conservative
-   - Most news is neutral to slightly positive/negative
-   - Reserve extreme scores for truly major events
-
-OUTPUT FORMAT:
-For each article, provide:
-1. Article number and source
-2. Brief summary (1 sentence)
-3. Sentiment score ({SENTIMENT_SCALE[0]} to {SENTIMENT_SCALE[1]})
-4. Reasoning (1-2 sentences)
-
-Then provide:
-OVERALL SENTIMENT: [weighted average score]
-CONFIDENCE: [High/Medium/Low]
-KEY FACTORS: [main factors influencing sentiment]"""
+FINAL AGGREGATION (Strict JSON Format):
+{{{{
+  "articles_analysis": [
+    {{{{
+      "article_no": [Number],
+      "source": "[Name]",
+      "mass": [0-10],
+      "vector": [{SENTIMENT_SCALE[0]} to {SENTIMENT_SCALE[1]}],
+      "reasoning": "[1 sentence]"
+    }}}}
+  ],
+  "aggregated_results": {{{{
+    "point_score": [Weighted Average: Σ(Vector * Mass) / Σ(Mass)],
+    "probability_range": "[Min_Impact] to [Max_Impact]",
+    "entropy": "[High/Medium/Low]",
+    "final_summary": "[Brief technical overview]"
+  }}}}
+}}}}"""
     
     def _get_macro_system_prompt(self) -> str:
         """Get the system prompt for macro/market sentiment analysis"""
-        return f"""You are a financial sentiment analysis expert specializing in macroeconomic and market trends.
+        return f"""Role: You are a Senior Data Physics Analyst specializing in Macroeconomic Field Dynamics. Your task is to process market/economic news as "External Forces" affecting NVIDIA's Informational Gravity Field.
 
-Your task is to analyze news articles about the STOCK MARKET, ECONOMY, and GEOPOLITICAL EVENTS and assess their impact on NVIDIA stock.
+Objective: Calculate the "Gravitational Mass" of each macro article to predict market-wide impact on NVIDIA's "Probability Field".
 
-SCORING SCALE: {SENTIMENT_SCALE[0]} to {SENTIMENT_SCALE[1]}
-- {SENTIMENT_SCALE[1]}: Extremely positive for tech stocks (rate cuts, strong economy, tech sector boom)
-- 75: Very positive (bullish market, positive Fed signals, tech strength)
-- 50: Positive (market gains, favorable policies)
-- 25: Slightly positive
-- 0: Neutral (no clear impact on NVIDIA)
-- -25: Slightly negative
-- -50: Negative (market concerns, tech sector weakness)
-- -75: Very negative (recession fears, rate hikes, tech sell-off)
-- {SENTIMENT_SCALE[0]}: Extremely negative (market crash, major crisis, tech collapse)
+CORE LOGIC:
+1. INFORMATIONAL MASS (0 to 10): 
+   - High Mass (8-10): Federal Reserve decisions, major economic data, tech sector regulations.
+   - Low Mass (1-3): General market commentary, minor economic indicators.
+2. NVIDIA CORRELATION: Direct tech impact = 1.0x | General economic = 0.5x.
+3. SOURCE DENSITY: Tier 1 (Bloomberg, Reuters, WSJ, Fed) = 1.0 | General news = 0.3.
 
-ANALYSIS GUIDELINES:
-1. Focus on NVIDIA's correlation with:
-   - NASDAQ and tech sector performance
-   - Federal Reserve policy (rates affect tech valuations)
-   - Semiconductor industry trends
-   - US-China relations (chip export restrictions)
-   - Economic indicators (GDP, inflation, unemployment)
-   - Market sentiment toward AI and tech
+MACRO FOCUS AREAS:
+- NASDAQ/tech sector performance correlation with NVIDIA
+- Federal Reserve policy impact on growth stocks
+- US-China trade tensions affecting semiconductor supply
+- Economic indicators (GDP, inflation) affecting tech valuations
+- Market sentiment toward AI and technology sector
 
-2. Consider:
-   - Market-wide trends affect NVIDIA heavily (high beta stock)
-   - Interest rate changes impact growth stocks like NVIDIA
-   - Geopolitical tensions affect chip supply chains
-   - Tech sector rotation impacts NVIDIA
-   - Economic recession fears hit growth stocks hard
+OUTPUT REQUIREMENTS:
+For EACH article, you must provide:
+1. Article Number and Source.
+2. Financial Mass (0-10).
+3. Field Vector ({SENTIMENT_SCALE[0]} to {SENTIMENT_SCALE[1]}) - Impact on NVIDIA.
+4. Brief Reasoning for NVIDIA correlation.
 
-3. Be realistic:
-   - Not all market news impacts NVIDIA directly
-   - NVIDIA follows NASDAQ but can diverge on company-specific news
-   - Weight events by relevance to tech/semiconductors
-
-OUTPUT FORMAT:
-For each article, provide:
-1. Article number and source
-2. Brief summary (1 sentence)
-3. Sentiment score ({SENTIMENT_SCALE[0]} to {SENTIMENT_SCALE[1]})
-4. Reasoning for NVIDIA impact (1-2 sentences)
-
-Then provide:
-OVERALL SENTIMENT: [weighted average score]
-CONFIDENCE: [High/Medium/Low]
-KEY FACTORS: [main macro factors affecting NVIDIA]"""
+FINAL AGGREGATION (Strict JSON Format):
+{{{{
+  "articles_analysis": [
+    {{{{
+      "article_no": [Number],
+      "source": "[Name]",
+      "mass": [0-10],
+      "vector": [{SENTIMENT_SCALE[0]} to {SENTIMENT_SCALE[1]}],
+      "reasoning": "[1 sentence about NVIDIA impact]"
+    }}}}
+  ],
+  "aggregated_results": {{{{
+    "point_score": [Weighted Average: Σ(Vector * Mass) / Σ(Mass)],
+    "probability_range": "[Min_Impact] to [Max_Impact]",
+    "entropy": "[High/Medium/Low]",
+    "final_summary": "[Brief technical overview of macro impact on NVIDIA]"
+  }}}}
+}}}}"""
     
     def analyze_articles(self, articles: List[Dict]) -> Dict:
         """
@@ -234,6 +219,14 @@ KEY FACTORS: [main macro factors affecting NVIDIA]"""
         
         logger.info(f"Company sentiment: {company_result['overall_score']:.2f}, Macro sentiment: {macro_result['overall_score']:.2f}, Combined: {combined_score:.2f}")
         
+        # Calculate combined probability range and entropy
+        combined_range = self._calculate_combined_range(company_result, macro_result)
+        combined_entropy = self._calculate_combined_entropy(company_result, macro_result)
+        
+        # Save individual article gravity data to database
+        self._save_article_gravity_data(company_articles)
+        self._save_article_gravity_data(macro_articles)
+        
         return {
             "company_sentiment": company_result['overall_score'],
             "company_confidence": company_result['confidence'],
@@ -243,6 +236,8 @@ KEY FACTORS: [main macro factors affecting NVIDIA]"""
             "macro_factors": macro_result['key_factors'],
             "combined_score": combined_score,
             "combined_confidence": combined_confidence,
+            "combined_range": combined_range,
+            "combined_entropy": combined_entropy,
             "article_count": {
                 "company": len(company_articles),
                 "macro": len(macro_articles)
@@ -288,8 +283,11 @@ KEY FACTORS: [main macro factors affecting NVIDIA]"""
             response = self.llm.invoke(messages)
             analysis_text = response.content
             
-            # Parse response
-            result = self._parse_sentiment_response(analysis_text, articles)
+            # Debug: Log the actual response
+            logger.debug(f"Full AI response for {article_type}: {analysis_text[:1000]}...")
+            
+            # Parse response - try JSON format first, fallback to text parsing
+            result = self._parse_gravity_response(analysis_text, articles, article_type)
             
             return result
             
@@ -324,6 +322,142 @@ KEY FACTORS: [main macro factors affecting NVIDIA]"""
             formatted += f"URL: {article['url']}\n\n"
         
         return formatted
+    
+    def _parse_gravity_response(self, response_text: str, articles: List[Dict], article_type: str) -> Dict:
+        """
+        Parse GPT-4 response in new JSON gravity format
+        
+        Args:
+            response_text: Raw GPT-4 response
+            articles: Original articles for reference
+            article_type: 'company' or 'macro'
+        
+        Returns:
+            Structured sentiment results with gravity data
+        """
+        import json
+        import re
+        
+        # Try to extract and parse JSON from response
+        try:
+            # Look for JSON block in the response - try multiple approaches
+            json_str = None
+            
+            # Method 1: Look for complete JSON object
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+            
+            # Method 2: If no complete object, look for JSON between code blocks
+            if not json_str:
+                code_block_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+                if code_block_match:
+                    json_str = code_block_match.group(1)
+            
+            # Method 3: Look for JSON between any code blocks
+            if not json_str:
+                any_code_block = re.search(r'```\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+                if any_code_block:
+                    json_str = any_code_block.group(1)
+            
+            if json_str:
+                # Clean the JSON string
+                json_str = json_str.strip()
+                logger.debug(f"Extracted JSON: {json_str[:100]}...")
+                gravity_data = json.loads(json_str)
+                
+                # Extract data from JSON structure
+                articles_analysis = gravity_data.get('articles_analysis', [])
+                aggregated = gravity_data.get('aggregated_results', {})
+                
+                # Process individual articles
+                article_scores = []
+                for i, article_data in enumerate(articles_analysis):
+                    if i < len(articles):
+                        # Update article with gravity data
+                        articles[i]['gravitational_mass'] = article_data.get('mass', 1.0)
+                        articles[i]['field_vector'] = article_data.get('vector', 0.0)
+                        
+                        article_scores.append({
+                            'article_no': article_data.get('article_no', i + 1),
+                            'source': article_data.get('source', articles[i].get('source', 'Unknown')),
+                            'mass': article_data.get('mass', 1.0),
+                            'vector': article_data.get('vector', 0.0),
+                            'reasoning': article_data.get('reasoning', 'No reasoning provided')
+                        })
+                
+                # Return structured result
+                return {
+                    "overall_score": aggregated.get('point_score', 0.0),
+                    "confidence": aggregated.get('entropy', 'Low').title(),
+                    "article_scores": article_scores,
+                    "key_factors": aggregated.get('final_summary', f"No {article_type} analysis"),
+                    "probability_range": aggregated.get('probability_range', ''),
+                    "entropy": aggregated.get('entropy', 'Low'),
+                    "raw_analysis": response_text
+                }
+                
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning(f"JSON parsing failed for {article_type} analysis: {str(e)}")
+            # Fallback to legacy text parsing
+            return self._parse_sentiment_response(response_text, articles)
+        
+        # Fallback if no JSON found
+        logger.warning(f"No valid JSON found in {article_type} response, using text parsing")
+        return self._parse_sentiment_response(response_text, articles)
+    
+    def _calculate_combined_range(self, company_result: Dict, macro_result: Dict) -> str:
+        """Calculate combined probability range from company and macro results"""
+        company_range = company_result.get('probability_range', '')
+        macro_range = macro_result.get('probability_range', '')
+        
+        if not company_range and not macro_range:
+            return ''
+        elif not company_range:
+            return macro_range
+        elif not macro_range:
+            return company_range
+        else:
+            # Average the ranges (simplified approach)
+            try:
+                from utils.database_manager import DatabaseManager
+                company_width = DatabaseManager.calculate_range_width(company_range)
+                macro_width = DatabaseManager.calculate_range_width(macro_range)
+                avg_width = (company_width + macro_width) / 2
+                center = 0  # Assume center around 0
+                half_width = avg_width / 2
+                return f"{center - half_width:.1f} to {center + half_width:.1f}"
+            except:
+                return company_range  # Fallback to company range
+    
+    def _calculate_combined_entropy(self, company_result: Dict, macro_result: Dict) -> str:
+        """Calculate combined entropy from company and macro results"""
+        company_entropy = company_result.get('entropy', 'Low')
+        macro_entropy = macro_result.get('entropy', 'Low')
+        
+        # Simple entropy combination logic
+        entropy_values = {'Low': 1, 'Medium': 2, 'High': 3}
+        avg_entropy = (entropy_values.get(company_entropy, 1) + entropy_values.get(macro_entropy, 1)) / 2
+        
+        if avg_entropy >= 2.5:
+            return 'High'
+        elif avg_entropy >= 1.5:
+            return 'Medium'
+        else:
+            return 'Low'
+    
+    def _save_article_gravity_data(self, articles: List[Dict]):
+        """Save gravitational mass and field vectors for individual articles"""
+        from utils.database_manager import DatabaseManager
+        db = DatabaseManager()
+        
+        for article in articles:
+            if 'gravitational_mass' in article and 'field_vector' in article and 'id' in article:
+                db.update_article_gravity_data(
+                    article_id=article['id'],
+                    gravitational_mass=article['gravitational_mass'],
+                    field_vector=article['field_vector']
+                )
     
     def _parse_sentiment_response(self, response_text: str, articles: List[Dict]) -> Dict:
         """

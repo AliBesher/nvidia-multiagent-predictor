@@ -4,6 +4,7 @@ Searches for NVIDIA-related news using Serper API and filters for relevance
 """
 
 import requests
+import time
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from agents.base_agent import BaseAgent
@@ -20,14 +21,27 @@ from config.trusted_sources import (
 )
 from utils.logger import setup_logger
 
+# Full-text scraping imports
+try:
+    from newspaper import Article, Config
+    NEWSPAPER_AVAILABLE = True
+except ImportError:
+    NEWSPAPER_AVAILABLE = False
+    
+try:
+    import trafilatura
+    TRAFILATURA_AVAILABLE = True
+except ImportError:
+    TRAFILATURA_AVAILABLE = False
+
 logger = setup_logger(__name__)
 
 
 class NewsAgent(BaseAgent):
-    """AI Agent for searching and filtering NVIDIA news"""
+    """AI Agent for searching and filtering NVIDIA news with full-text scraping"""
     
     def __init__(self):
-        """Initialize News Agent with Serper API"""
+        """Initialize News Agent with Serper API and scraping capabilities"""
         super().__init__("NewsAgent", temperature=0.3)  # Lower temp for focused search
         
         if not SERPER_API_KEY:
@@ -35,7 +49,24 @@ class NewsAgent(BaseAgent):
         
         self.api_key = SERPER_API_KEY
         self.base_url = "https://google.serper.dev/news"
-        logger.info("NewsAgent ready with Serper API")
+        
+        # Scraping configuration
+        self.scraping_enabled = NEWSPAPER_AVAILABLE or TRAFILATURA_AVAILABLE
+        self.scraping_delay = 1.0  # 1 second delay between requests
+        self.max_content_length = 10000  # Limit content size
+        
+        # User agent for scraping
+        self.user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        
+        if self.scraping_enabled:
+            logger.info("NewsAgent ready with Serper API and full-text scraping")
+            if NEWSPAPER_AVAILABLE:
+                logger.info("Using newspaper3k for content extraction")
+            elif TRAFILATURA_AVAILABLE:
+                logger.info("Using trafilatura for content extraction")
+        else:
+            logger.warning("NewsAgent ready with Serper API only - install newspaper3k or trafilatura for full-text scraping")
+            logger.info("pip install newspaper3k  # OR pip install trafilatura")
     
     def search_news(self, date: Optional[str] = None, max_results: int = MAX_NEWS_ARTICLES) -> List[Dict]:
         """
@@ -262,9 +293,24 @@ class NewsAgent(BaseAgent):
                 'snippet': snippet,
                 'date': target_date,
                 'source_tier': get_company_source_tier(source),
-                'is_trusted': is_trusted_company_source(source)
+                'is_trusted': is_trusted_company_source(source),
+                'full_content': ''  # Will be populated by scraper
             }
             
+            # Attempt to scrape full content
+            if self.scraping_enabled:
+                full_content = self._scrape_article_content(link)
+                if full_content:
+                    filtered_article['full_content'] = full_content
+                    logger.debug(f"Scraped {len(full_content)} characters from {source}")
+                else:
+                    logger.debug(f"Failed to scrape content from {link}")
+                    # Fallback to snippet if scraping fails
+                    filtered_article['full_content'] = snippet
+            else:
+                # Use snippet as fallback when scraping not available
+                filtered_article['full_content'] = snippet
+
             filtered.append(filtered_article)
             logger.debug(f"Added company article: {title[:50]}... from {source} (tier {get_company_source_tier(source)})")
         
@@ -319,9 +365,24 @@ class NewsAgent(BaseAgent):
                 'snippet': snippet,
                 'date': target_date,
                 'source_tier': get_macro_source_tier(source),
-                'is_trusted': is_trusted_macro_source(source)
+                'is_trusted': is_trusted_macro_source(source),
+                'full_content': ''  # Will be populated by scraper
             }
             
+            # Attempt to scrape full content
+            if self.scraping_enabled:
+                full_content = self._scrape_article_content(link)
+                if full_content:
+                    filtered_article['full_content'] = full_content
+                    logger.debug(f"Scraped {len(full_content)} characters from {source}")
+                else:
+                    logger.debug(f"Failed to scrape content from {link}")
+                    # Fallback to snippet if scraping fails
+                    filtered_article['full_content'] = snippet
+            else:
+                # Use snippet as fallback when scraping not available
+                filtered_article['full_content'] = snippet
+
             filtered.append(filtered_article)
             logger.debug(f"Added macro article: {title[:50]}... from {source} (tier {get_macro_source_tier(source)})")
         
@@ -398,14 +459,148 @@ class NewsAgent(BaseAgent):
         # Log the selection
         for i, article in enumerate(limited, 1):
             tier = article['source_tier']
-            trust = "✓" if article['is_trusted'] else "✗"
+            trust = "T" if article['is_trusted'] else "U"  # T=Trusted, U=Untrusted
             logger.info(f"  {i}. [{trust}] Tier {tier} - {article['source']}: {article['title'][:60]}...")
         
         return limited
     
+    def _scrape_article_content(self, url: str) -> Optional[str]:
+        """
+        Scrape full article content from URL with rate limiting
+        
+        Args:
+            url: Article URL to scrape
+            
+        Returns:
+            Full article text or None if failed
+        """
+        if not self.scraping_enabled:
+            return None
+            
+        try:
+            # Rate limiting - delay between requests
+            time.sleep(self.scraping_delay)
+            
+            # Try newspaper3k first (best for news articles)
+            if NEWSPAPER_AVAILABLE:
+                content = self._scrape_with_newspaper(url)
+                if content:
+                    return content
+            
+            # Fallback to trafilatura
+            if TRAFILATURA_AVAILABLE:
+                content = self._scrape_with_trafilatura(url)
+                if content:
+                    return content
+                    
+            return None
+            
+        except Exception as e:
+            logger.debug(f"Error scraping {url}: {str(e)}")
+            return None
+    
+    def _scrape_with_newspaper(self, url: str) -> Optional[str]:
+        """
+        Scrape using newspaper3k library
+        
+        Args:
+            url: Article URL
+            
+        Returns:
+            Article text or None
+        """
+        try:
+            # Configure newspaper with user agent
+            config = Config()
+            config.browser_user_agent = self.user_agent
+            config.request_timeout = 10
+            
+            # Download and parse article
+            article = Article(url, config=config)
+            article.download()
+            article.parse()
+            
+            # Get clean text
+            if article.text:
+                cleaned_text = self._clean_article_text(article.text)
+                return cleaned_text[:self.max_content_length] if cleaned_text else None
+                
+            return None
+            
+        except Exception as e:
+            logger.debug(f"Newspaper scraping failed for {url}: {str(e)}")
+            return None
+    
+    def _scrape_with_trafilatura(self, url: str) -> Optional[str]:
+        """
+        Scrape using trafilatura library
+        
+        Args:
+            url: Article URL
+            
+        Returns:
+            Article text or None
+        """
+        try:
+            # Download with custom headers
+            headers = {'User-Agent': self.user_agent}
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            # Extract content with trafilatura
+            content = trafilatura.extract(response.text)
+            
+            if content:
+                cleaned_text = self._clean_article_text(content)
+                return cleaned_text[:self.max_content_length] if cleaned_text else None
+                
+            return None
+            
+        except Exception as e:
+            logger.debug(f"Trafilatura scraping failed for {url}: {str(e)}")
+            return None
+    
+    def _clean_article_text(self, text: str) -> str:
+        """
+        Clean scraped article text by removing unwanted content
+        
+        Args:
+            text: Raw article text
+            
+        Returns:
+            Cleaned article text
+        """
+        if not text:
+            return ""
+            
+        import re
+        
+        # Remove common navigation/ad text patterns
+        text = re.sub(r'Sign up for our newsletter', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Subscribe to our newsletter', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Follow us on (Twitter|Facebook|LinkedIn)', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Advertisement', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Related Articles?:', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Read More:', '', text, flags=re.IGNORECASE)
+        
+        # Remove extra whitespace and normalize
+        text = re.sub(r'\s+', ' ', text)  # Multiple spaces to single space
+        text = re.sub(r'\n\s*\n', '\n\n', text)  # Multiple newlines to double newline
+        text = text.strip()
+        
+        # Remove very short fragments (likely navigation)
+        lines = text.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            line = line.strip()
+            if len(line) > 20:  # Keep lines longer than 20 characters
+                cleaned_lines.append(line)
+        
+        return '\n'.join(cleaned_lines)
+    
     def format_articles_for_sentiment(self, articles: List[Dict]) -> str:
         """
-        Format articles for sentiment analysis
+        Format articles for sentiment analysis using full content when available
         
         Args:
             articles: List of articles
@@ -422,7 +617,17 @@ class NewsAgent(BaseAgent):
             formatted += f"Article {i}:\n"
             formatted += f"Source: {article['source']}\n"
             formatted += f"Title: {article['title']}\n"
-            formatted += f"Content: {article['snippet']}\n"
+            
+            # Use full_content if available and substantial, otherwise use snippet
+            content = article.get('full_content', '')
+            if content and len(content) > len(article.get('snippet', '')):
+                # Limit content length for GPT context window
+                if len(content) > 2000:
+                    content = content[:2000] + "..."
+                formatted += f"Content: {content}\n"
+            else:
+                formatted += f"Content: {article['snippet']}\n"
+                
             formatted += f"URL: {article['url']}\n\n"
         
         return formatted

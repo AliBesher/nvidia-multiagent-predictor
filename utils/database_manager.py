@@ -35,6 +35,44 @@ class DatabaseManager:
             logger.error(f"Database connection failed: {str(e)}")
             raise
     
+    def execute_sql(self, sql: str, params: Optional[tuple] = None) -> List[Dict[str, Any]]:
+        """
+        Execute raw SQL command and return results
+        
+        Args:
+            sql: SQL command to execute
+            params: Optional parameters for the SQL command
+        
+        Returns:
+            List of dictionaries with results (empty list for non-SELECT queries)
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            if params:
+                cursor.execute(sql, params)
+            else:
+                cursor.execute(sql)
+            
+            # Check if it's a SELECT query
+            if sql.strip().upper().startswith('SELECT'):
+                results = cursor.fetchall()
+                return [dict(row) for row in results]
+            else:
+                # For non-SELECT queries (INSERT, UPDATE, DELETE, ALTER, etc.)
+                conn.commit()
+                return []
+        
+        except Exception as e:
+            logger.error(f"SQL execution failed: {str(e)}")
+            if conn:
+                conn.rollback()
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
     def save_daily_data(self, data: Dict[str, Any]) -> bool:
         """
         Save or update daily stock data
@@ -252,7 +290,7 @@ class DatabaseManager:
                 conn.close()
             return False
     
-    def update_sentiment_scores(self, date: str, company_sentiment: float, macro_sentiment: float, combined_sentiment: float) -> bool:
+    def update_sentiment_scores(self, date: str, company_sentiment: float, macro_sentiment: float, combined_sentiment: float, sentiment_range: str = None, entropy: str = None) -> bool:
         """
         Update all sentiment scores for a specific date (company, macro, and combined)
         
@@ -260,7 +298,9 @@ class DatabaseManager:
             date: Date in YYYY-MM-DD format
             company_sentiment: Company-specific sentiment score
             macro_sentiment: Macro/market sentiment score
-            combined_sentiment: Combined weighted sentiment score
+            combined_sentiment: Combined weighted sentiment score (point_score/Head)
+            sentiment_range: Probability range string (Tail) e.g., "-10 to +20"
+            entropy: Information dispersion level (High/Medium/Low)
         
         Returns:
             True if successful, False otherwise
@@ -274,15 +314,17 @@ class DatabaseManager:
                 SET company_sentiment = %s, 
                     macro_sentiment = %s,
                     sentiment_score = %s,
+                    sentiment_range = %s,
+                    entropy = %s,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE date = %s
             """
-            cursor.execute(query, (company_sentiment, macro_sentiment, combined_sentiment, date))
+            cursor.execute(query, (company_sentiment, macro_sentiment, combined_sentiment, sentiment_range, entropy, date))
             
             conn.commit()
             cursor.close()
             conn.close()
-            logger.info(f"Updated sentiment scores for {date}: Company={company_sentiment}, Macro={macro_sentiment}, Combined={combined_sentiment}")
+            logger.info(f"Updated sentiment scores for {date}: Company={company_sentiment}, Macro={macro_sentiment}, Combined={combined_sentiment}, Range={sentiment_range}, Entropy={entropy}")
             return True
             
         except Exception as e:
@@ -291,6 +333,75 @@ class DatabaseManager:
                 conn.rollback()
                 conn.close()
             return False
+    
+    def update_article_gravity_data(self, article_id: int, gravitational_mass: float, field_vector: float) -> bool:
+        """
+        Update gravitational mass and field vector for a specific article
+        
+        Args:
+            article_id: ID of the article to update
+            gravitational_mass: Informational mass weight (0-10)
+            field_vector: Field vector sentiment score (-100 to +100)
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            query = """
+                UPDATE articles 
+                SET gravitational_mass = %s,
+                    sentiment_score = %s
+                WHERE id = %s
+            """
+            cursor.execute(query, (gravitational_mass, field_vector, article_id))
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            logger.info(f"Updated article {article_id} gravity data: Mass={gravitational_mass}, Vector={field_vector}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error updating article gravity data: {str(e)}")
+            if conn:
+                conn.rollback()
+                conn.close()
+            return False
+
+    @staticmethod
+    def calculate_range_width(sentiment_range: str) -> float:
+        """
+        Calculate the width of a probability range for volatility analysis
+        
+        Args:
+            sentiment_range: Range string like "-10 to +20" or "-5 to 15"
+        
+        Returns:
+            Range width as float (e.g., 30.0 for "-10 to +20")
+        """
+        if not sentiment_range or " to " not in sentiment_range:
+            return 0.0
+        
+        try:
+            parts = sentiment_range.split(" to ")
+            if len(parts) != 2:
+                return 0.0
+            
+            # Clean and parse the bounds
+            lower = float(parts[0].replace("+", "").strip())
+            upper = float(parts[1].replace("+", "").strip())
+            
+            width = upper - lower
+            logger.debug(f"Range width calculation: '{sentiment_range}' -> {width}")
+            return width
+            
+        except (ValueError, IndexError) as e:
+            logger.error(f"Error calculating range width from '{sentiment_range}': {str(e)}")
+            return 0.0
     
     def get_daily_data(self, date: str) -> Optional[Dict]:
         """
