@@ -372,6 +372,73 @@ class DatabaseManager:
                 conn.close()
             return False
 
+    def save_batch_sentiment(self, date: str, batch_result: Dict, article_ids: List[int]) -> bool:
+        """
+        Save batch sentiment analysis results to database
+        
+        Args:
+            date: Date in YYYY-MM-DD format
+            batch_result: Dictionary with batch analysis results
+            article_ids: List of article IDs that were analyzed
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Extract values from batch result with defaults
+            point_score = float(batch_result.get('point_score', 0.0))
+            sentiment_range = batch_result.get('probability_range', '0 to 0')
+            entropy = batch_result.get('entropy', 'Medium')
+            company_impact = float(batch_result.get('company_impact', 0.0))
+            macro_impact = float(batch_result.get('macro_impact', 0.0))
+            
+            # Update daily_data with batch results
+            query = """
+                UPDATE daily_data 
+                SET company_sentiment = %s,
+                    macro_sentiment = %s, 
+                    sentiment_score = %s,
+                    sentiment_range = %s,
+                    entropy = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE date = %s
+            """
+            cursor.execute(query, (company_impact, macro_impact, point_score, sentiment_range, entropy, date))
+            
+            # Update individual articles with gravity data if available
+            if 'article_details' in batch_result:
+                for i, article_detail in enumerate(batch_result['article_details']):
+                    if i < len(article_ids):
+                        article_id = article_ids[i]
+                        gravitational_mass = float(article_detail.get('gravitational_mass', 1.0))
+                        field_vector = float(article_detail.get('field_vector', 0.0))
+                        
+                        update_article_query = """
+                            UPDATE articles 
+                            SET gravitational_mass = %s,
+                                sentiment_score = %s
+                            WHERE id = %s
+                        """
+                        cursor.execute(update_article_query, (gravitational_mass, field_vector, article_id))
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            logger.info(f"Saved batch sentiment for {date}: Score={point_score}, Range={sentiment_range}, Entropy={entropy}")
+            logger.info(f"  Company Impact: {company_impact}, Macro Impact: {macro_impact}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error saving batch sentiment: {str(e)}")
+            if conn:
+                conn.rollback()
+                conn.close()
+            return False
+
     @staticmethod
     def calculate_range_width(sentiment_range: str) -> float:
         """
@@ -402,6 +469,83 @@ class DatabaseManager:
         except (ValueError, IndexError) as e:
             logger.error(f"Error calculating range width from '{sentiment_range}': {str(e)}")
             return 0.0
+    
+    def update_gravity_accuracy(self, date: str, gravity_accuracy: float) -> bool:
+        """
+        Update gravity accuracy for a specific date
+        
+        Args:
+            date: Date in YYYY-MM-DD format
+            gravity_accuracy: Calculated accuracy percentage (0-100)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            query = """
+                UPDATE daily_data 
+                SET gravity_accuracy = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE date = %s
+            """
+            cursor.execute(query, (gravity_accuracy, date))
+            
+            if cursor.rowcount == 0:
+                logger.warning(f"No rows updated - date {date} not found in daily_data")
+                return False
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            logger.info(f"Updated gravity accuracy for {date}: {gravity_accuracy}%")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error updating gravity accuracy: {str(e)}")
+            if conn:
+                conn.rollback()
+                conn.close()
+            return False
+    
+    def get_predictions_for_accuracy_calculation(self, limit: int = 30) -> List[Dict]:
+        """
+        Get predictions that need accuracy calculation (have price_change_percent but no gravity_accuracy)
+        
+        Args:
+            limit: Maximum number of records to return
+            
+        Returns:
+            List of dictionaries with prediction data
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            query = """
+                SELECT date, sentiment_score, price_change_percent, gravity_accuracy
+                FROM daily_data 
+                WHERE sentiment_score IS NOT NULL 
+                    AND price_change_percent IS NOT NULL
+                    AND gravity_accuracy IS NULL
+                ORDER BY date DESC
+                LIMIT %s
+            """
+            
+            cursor.execute(query, (limit,))
+            results = cursor.fetchall()
+            
+            cursor.close()
+            conn.close()
+            
+            return [dict(row) for row in results]
+            
+        except Exception as e:
+            logger.error(f"Error fetching predictions for accuracy calculation: {str(e)}")
+            return []
     
     def get_daily_data(self, date: str) -> Optional[Dict]:
         """

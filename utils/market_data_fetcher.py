@@ -262,6 +262,44 @@ class MarketDataFetcher:
         except Exception as e:
             logger.error(f"Error getting last trading day: {str(e)}")
             return None
+    
+    def get_price_change_percent(self, start_date: str, end_date: str) -> Optional[float]:
+        """
+        Calculate price change percentage between two dates
+        
+        Args:
+            start_date: Start date in YYYY-MM-DD format
+            end_date: End date in YYYY-MM-DD format
+            
+        Returns:
+            Price change percentage, or None if data not available
+        """
+        try:
+            logger.info(f"Calculating price change from {start_date} to {end_date}")
+            
+            # Get data for both dates
+            start_data = self.fetch_daily_data(start_date)
+            end_data = self.fetch_daily_data(end_date)
+            
+            if not start_data or not end_data:
+                logger.warning(f"Cannot calculate price change - missing data for {start_date} or {end_date}")
+                return None
+            
+            start_price = float(start_data['close_price'])
+            end_price = float(end_data['close_price'])
+            
+            if start_price == 0:
+                logger.error("Start price is zero - cannot calculate percentage")
+                return None
+            
+            price_change_percent = ((end_price - start_price) / start_price) * 100
+            
+            logger.info(f"Price change: ${start_price:.2f} -> ${end_price:.2f} ({price_change_percent:+.2f}%)")
+            return round(price_change_percent, 2)
+            
+        except Exception as e:
+            logger.error(f"Error calculating price change: {str(e)}")
+            return None
 
 
 # ============================================

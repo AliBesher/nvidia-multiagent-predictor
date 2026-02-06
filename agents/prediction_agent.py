@@ -104,16 +104,16 @@ class PredictionAgent(BaseAgent):
     
     def predict_next_day(self, date: Optional[str] = None) -> Dict:
         """
-        Predict next day's price movement
+        Predict next day's price movement using Tail and Head Theory with Technical Inertia
         
         Args:
             date: Date to predict for (default: latest in database)
         
         Returns:
-            Prediction result dictionary
+            Prediction result dictionary with physics-based reasoning
         """
         logger.info("-"*60)
-        logger.info("Making prediction for next trading day")
+        logger.info("🔮 GENERATING PHYSICS-BASED PREDICTION")
         logger.info("-"*60)
         
         # Check if model is trained
@@ -137,26 +137,46 @@ class PredictionAgent(BaseAgent):
             return {
                 'success': False,
                 'prediction': None,
-                'message': "No data available for prediction"
+                'message': "No gravitational data available for prediction"
             }
         
-        logger.info(f"Predicting based on: {current_data.get('date', 'latest')}")
-        logger.info(f"  Close: ${float(current_data.get('close_price', 0)):.2f}")
-        logger.info(f"  Sentiment: {float(current_data.get('sentiment_score', 0)):.2f}")
-        logger.info(f"  RSI: {float(current_data.get('rsi', 0)):.2f}")
+        logger.info(f"📊 Analyzing gravitational field for: {current_data.get('date', 'latest')}")
+        logger.info(f"  Price: ${float(current_data.get('close_price', 0)):.2f}")
+        logger.info(f"  Sentiment Field: {float(current_data.get('sentiment_score', 0)):.2f}")
+        logger.info(f"  Probability Range: {current_data.get('sentiment_range', 'N/A')}")
+        logger.info(f"  Entropy Level: {current_data.get('entropy', 'N/A')}")
+        logger.info(f"  Technical Momentum (RSI): {float(current_data.get('rsi', 0)):.2f}")
         
-        # Get average volume for context
+        # Get average volume for gravitational context
         avg_volume = self.db.get_average_volume(days=20)
         current_data['avg_volume'] = avg_volume
         
-        # Make prediction
-        prediction = self.model.predict(current_data)
+        # Generate physics-based prediction with Technical Inertia
+        prediction = self.generate_prediction(current_data)
         
         if prediction['can_predict']:
-            logger.info(f"\n🎯 PREDICTION: {prediction['prediction']}")
-            logger.info(f"   Confidence: {prediction['confidence']:.1%}")
+            logger.info(f"\n🎯 GRAVITATIONAL PREDICTION: {prediction['prediction']}")
+            logger.info(f"   Final Confidence: {prediction['confidence']:.1%}")
+            logger.info(f"   Range Confidence: {prediction.get('range_confidence', 0):.1%} (field focus)")
+            logger.info(f"   Technical Inertia: {prediction.get('technical_inertia', 0):.2f} (momentum resistance)")
+            logger.info(f"   Physics Analysis: {prediction.get('physics_reasoning', 'N/A')}")
             logger.info(f"   Up probability: {prediction['probability_up']:.1%}")
             logger.info(f"   Down probability: {prediction['probability_down']:.1%}")
+            logger.info(f"   Probability Field Width: {prediction.get('range_width', 0):.1f}")
+            
+            # Enhanced physics-based warnings
+            entropy = prediction.get('entropy_level', 'Medium')
+            if entropy == 'High':
+                logger.warning("⚠️  HIGH ENTROPY FIELD DETECTED:")
+                logger.warning("   Gravitational forces are chaotic and dispersed")
+                logger.warning("   Probability field lacks coherent structure")
+                logger.warning("   Consider waiting for entropy reduction")
+            
+            inertia_override = prediction.get('inertia_override', False)
+            if inertia_override:
+                logger.info("✨ INERTIA OVERRIDE: Sentiment mass sufficient to change trajectory")
+            elif prediction.get('technical_inertia', 0) > 0.7:
+                logger.warning("🛡️  HIGH TECHNICAL INERTIA: Strong momentum resistance detected")
             
             # Save prediction to database
             self.db.save_prediction(
@@ -165,7 +185,7 @@ class PredictionAgent(BaseAgent):
                 confidence=prediction['confidence']
             )
         else:
-            logger.warning(f"Cannot make prediction: {prediction['message']}")
+            logger.warning(f"Cannot generate prediction: {prediction['message']}")
         
         return {
             'success': prediction['can_predict'],
@@ -174,8 +194,255 @@ class PredictionAgent(BaseAgent):
             'confidence': prediction['confidence'],
             'probability_up': prediction['probability_up'],
             'probability_down': prediction['probability_down'],
+            'entropy': current_data.get('entropy', 'Medium'),
+            'entropy_level': prediction.get('entropy_level', 'Medium'),
+            'sentiment_range': current_data.get('sentiment_range', '0 to 0'),
+            'range_width': prediction.get('range_width', 0.0),
+            'range_confidence': prediction.get('range_confidence', 0.5),
+            'technical_inertia': prediction.get('technical_inertia', 0.0),
+            'inertia_override': prediction.get('inertia_override', False),
+            'physics_reasoning': prediction.get('physics_reasoning', ''),
             'message': prediction['message']
         }
+    
+    def _calculate_range_width(self, sentiment_range: str) -> float:
+        """
+        Calculate the width of a sentiment probability range
+        
+        Args:
+            sentiment_range: Range string like "-10 to +20" or "65 to 75"
+            
+        Returns:
+            Width of the range as a float
+        """
+        try:
+            # Parse range string
+            if ' to ' in sentiment_range:
+                parts = sentiment_range.split(' to ')
+                if len(parts) == 2:
+                    # Remove any + signs and convert to float
+                    low = float(parts[0].replace('+', ''))
+                    high = float(parts[1].replace('+', ''))
+                    return abs(high - low)
+            return 0.0
+        except (ValueError, AttributeError):
+            return 0.0
+    
+    def generate_prediction(self, current_data: Dict) -> Dict:
+        """
+        Generate physics-based prediction with Technical Inertia integration.
+        Implements Tail and Head Theory with gravitational field analysis.
+        
+        Args:
+            current_data: Current market and sentiment data
+        
+        Returns:
+            Enhanced prediction with physics reasoning
+        """
+        # Get base prediction from model
+        base_prediction = self.model.predict(current_data)
+        
+        if not base_prediction['can_predict']:
+            return base_prediction
+        
+        # Extract technical indicators for inertia calculation
+        rsi = float(current_data.get('rsi', 50))
+        moving_avg_50 = float(current_data.get('moving_avg_50', 0))
+        current_price = float(current_data.get('close_price', 0))
+        sentiment_score = float(current_data.get('sentiment_score', 0))
+        
+        # Get sentiment physics data
+        entropy = current_data.get('entropy', 'Medium')
+        sentiment_range = current_data.get('sentiment_range', '0 to 0')
+        
+        # Calculate Technical Inertia
+        technical_inertia = self._calculate_technical_inertia(rsi, current_price, moving_avg_50)
+        
+        # Calculate Range-based Confidence
+        range_width = self._calculate_range_width(sentiment_range)
+        range_confidence = self._calculate_range_confidence(range_width)
+        
+        # Apply Technical Inertia to prediction logic
+        prediction_result = self._apply_technical_inertia(
+            base_prediction, technical_inertia, sentiment_score, entropy
+        )
+        
+        # Generate physics-based reasoning
+        physics_reasoning = self._generate_physics_reasoning(
+            technical_inertia, range_width, entropy, sentiment_score, rsi
+        )
+        
+        # Combine all confidence factors
+        final_confidence = self._calculate_final_confidence(
+            base_prediction['confidence'], range_confidence, entropy, technical_inertia
+        )
+        
+        # Update prediction with physics enhancements
+        prediction_result.update({
+            'confidence': final_confidence,
+            'range_width': range_width,
+            'range_confidence': range_confidence,
+            'technical_inertia': technical_inertia,
+            'physics_reasoning': physics_reasoning,
+            'entropy_level': entropy
+        })
+        
+        logger.info(f"🧲 Technical Inertia: {technical_inertia:.2f} (momentum resistance)")
+        logger.info(f"📏 Range Width: {range_width:.1f} (probability field dispersion)")
+        logger.info(f"🎯 Range Confidence: {range_confidence:.1%} (field focus factor)")
+        logger.info(f"⚡ Physics Reasoning: {physics_reasoning}")
+        
+        return prediction_result
+    
+    def _calculate_technical_inertia(self, rsi: float, price: float, moving_avg: float) -> float:
+        """
+        Calculate Technical Inertia - resistance to trend changes based on momentum.
+        Higher inertia requires stronger news 'Mass' to overcome.
+        
+        Args:
+            rsi: Relative Strength Index (0-100)
+            price: Current price
+            moving_avg: 50-day moving average
+        
+        Returns:
+            Technical inertia score (0-1, higher = more resistance to change)
+        """
+        # RSI momentum component (0-1)
+        if rsi > 70:  # Overbought - high upward inertia
+            rsi_inertia = (rsi - 70) / 30  # 0 to 1 as RSI goes 70-100
+        elif rsi < 30:  # Oversold - high downward inertia  
+            rsi_inertia = (30 - rsi) / 30  # 0 to 1 as RSI goes 30-0
+        else:
+            rsi_inertia = 0  # Neutral zone - low inertia
+        
+        # Price vs moving average momentum (0-1)
+        if moving_avg > 0:
+            price_deviation = abs(price - moving_avg) / moving_avg
+            trend_inertia = min(price_deviation * 2, 1.0)  # Cap at 1.0
+        else:
+            trend_inertia = 0
+        
+        # Combine factors (weight RSI more heavily)
+        technical_inertia = (rsi_inertia * 0.7) + (trend_inertia * 0.3)
+        
+        return min(technical_inertia, 1.0)
+    
+    def _calculate_range_confidence(self, range_width: float) -> float:
+        """
+        Calculate confidence based on sentiment range width.
+        Narrower range = higher confidence (focused gravitational field).
+        
+        Args:
+            range_width: Width of sentiment probability range
+        
+        Returns:
+            Confidence factor (0-1)
+        """
+        if range_width <= 0:
+            return 0.5  # Default for missing data
+        
+        # Narrow ranges give high confidence, wide ranges give low confidence
+        # Use exponential decay for smoother scaling
+        import math
+        confidence = math.exp(-range_width / 20)  # Decay factor of 20
+        
+        return max(min(confidence, 0.95), 0.2)  # Clamp between 20% and 95%
+    
+    def _apply_technical_inertia(self, base_prediction: Dict, technical_inertia: float, 
+                                sentiment_score: float, entropy: str) -> Dict:
+        """
+        Apply Technical Inertia to modify prediction based on momentum resistance.
+        High inertia requires strong sentiment mass to predict reversals.
+        """
+        prediction = base_prediction.copy()
+        
+        # Calculate required sentiment strength to overcome inertia
+        inertia_threshold = technical_inertia * 60  # Scale to sentiment range
+        sentiment_strength = abs(sentiment_score)
+        
+        # If sentiment is not strong enough to overcome inertia, bias toward continuation
+        if sentiment_strength < inertia_threshold:
+            # High inertia + weak sentiment = trend continuation bias
+            inertia_factor = 1 - (sentiment_strength / inertia_threshold)
+            
+            # Reduce confidence in reversal predictions
+            if ((sentiment_score > 0 and prediction['prediction'] == 'DOWN') or 
+                (sentiment_score < 0 and prediction['prediction'] == 'UP')):
+                # Trying to predict reversal against inertia
+                prediction['confidence'] *= (1 - inertia_factor * 0.4)  # Reduce confidence
+                prediction['inertia_override'] = False
+            else:
+                # Predicting continuation with inertia
+                prediction['confidence'] *= (1 + inertia_factor * 0.2)  # Boost confidence
+                prediction['inertia_override'] = False
+        else:
+            # Strong sentiment can overcome inertia
+            prediction['inertia_override'] = True
+        
+        return prediction
+    
+    def _generate_physics_reasoning(self, technical_inertia: float, range_width: float, 
+                                   entropy: str, sentiment_score: float, rsi: float) -> str:
+        """
+        Generate physics-based reasoning using gravitational field terminology.
+        """
+        reasoning_parts = []
+        
+        # Range width analysis (probability field)
+        if range_width > 30:
+            reasoning_parts.append("The probability field is too wide due to high entropy")
+        elif range_width < 10:
+            reasoning_parts.append("The gravitational pull is concentrated at the head")
+        else:
+            reasoning_parts.append("The probability field shows moderate dispersion")
+        
+        # Technical inertia analysis
+        if technical_inertia > 0.7:
+            if rsi > 70:
+                reasoning_parts.append("Strong upward momentum creates resistance to downward forces")
+            elif rsi < 30:
+                reasoning_parts.append("Strong downward momentum creates resistance to upward forces")
+            else:
+                reasoning_parts.append("High technical inertia requires exceptional news mass to alter trajectory")
+        elif technical_inertia < 0.3:
+            reasoning_parts.append("Low technical inertia allows sentiment forces to dominate price movement")
+        
+        # Sentiment field strength
+        if abs(sentiment_score) > 40:
+            reasoning_parts.append(f"Powerful {'positive' if sentiment_score > 0 else 'negative'} gravitational field detected")
+        elif abs(sentiment_score) < 10:
+            reasoning_parts.append("Weak gravitational field suggests minimal directional force")
+        
+        # Entropy contribution
+        if entropy == 'High':
+            reasoning_parts.append("High entropy indicates chaotic information dispersion")
+        elif entropy == 'Low':
+            reasoning_parts.append("Low entropy suggests coherent information alignment")
+        
+        return ". ".join(reasoning_parts) + "."
+    
+    def _calculate_final_confidence(self, base_confidence: float, range_confidence: float, 
+                                   entropy: str, technical_inertia: float) -> float:
+        """
+        Calculate final confidence by combining all physics factors.
+        """
+        # Start with range-based confidence (most important)
+        final_confidence = range_confidence
+        
+        # Apply entropy adjustment
+        if entropy == 'Low':
+            final_confidence *= 1.15  # Boost for low entropy
+        elif entropy == 'High':
+            final_confidence *= 0.85  # Reduce for high entropy
+        
+        # Apply inertia adjustment (higher inertia = more confident in continuation)
+        inertia_adjustment = 1 + (technical_inertia * 0.1)  # Small boost for high inertia
+        final_confidence *= inertia_adjustment
+        
+        # Combine with base model confidence (weighted average)
+        final_confidence = (final_confidence * 0.7) + (base_confidence * 0.3)
+        
+        return max(min(final_confidence, 0.95), 0.15)  # Clamp between 15% and 95%
     
     def get_model_status(self) -> Dict:
         """Get current model status"""

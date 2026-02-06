@@ -33,6 +33,11 @@ def main():
         help='Run without saving to database (for testing)'
     )
     parser.add_argument(
+        '--calibrate',
+        action='store_true',
+        help='Run post-market gravity accuracy calibration'
+    )
+    parser.add_argument(
         '--info',
         action='store_true',
         help='Show system configuration and exit'
@@ -44,6 +49,10 @@ def main():
     if args.info:
         print_system_info()
         return 0
+    
+    # Run post-market calibration if requested
+    if args.calibrate:
+        return run_post_market_calibration()
     
     # Display header
     log_section_header(logger, "NVIDIA Stock Prediction System")
