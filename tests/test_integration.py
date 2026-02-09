@@ -7,8 +7,8 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from utils.database_manager import DatabaseManager
-from utils.market_data_fetcher import MarketDataFetcher
+from data.database_manager import DatabaseManager
+from data.market_data_fetcher import MarketDataFetcher
 from datetime import datetime, timedelta
 
 def test_database_integration():

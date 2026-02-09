@@ -5,8 +5,8 @@ Manages the logic of accumulating weekend articles and updating last trading day
 
 from datetime import datetime
 from typing import Optional, List, Dict
-from utils.database_manager import DatabaseManager
-from utils.market_data_fetcher import MarketDataFetcher
+from data.database_manager import DatabaseManager
+from data.market_data_fetcher import MarketDataFetcher
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)

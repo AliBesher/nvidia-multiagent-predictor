@@ -9,35 +9,35 @@ from utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 
-def calculate_gravity_accuracy(predicted_score: float, price_change_percent: float) -> float:
+def calculate_gravity_accuracy(predicted_score: float, opening_gap_percent: float) -> float:
     """
-    Calculate accuracy of the Informational Gravity model prediction
+    Calculate accuracy of the Informational Gravity model for next-day opening predictions
     
-    Measures how well the gravity-based sentiment score predicts actual market movement.
+    Measures how well the gravity-based sentiment score predicts actual opening gap movement.
     The predicted_score represents the 'Head' (point score) from the gravity analysis,
-    normalized to match the price movement scale.
+    normalized to match the opening gap scale.
     
     Args:
         predicted_score: Gravity-based sentiment score (-100 to +100)
-        price_change_percent: Actual stock price change percentage
+        opening_gap_percent: Actual opening gap percentage (next_day_open - current_close)
         
     Returns:
-        Accuracy percentage (0-100) representing 'Physical Match' between theory and reality
+        Accuracy percentage (0-100) representing 'Physical Match' between prediction and opening reality
         
     Example:
-        >>> calculate_gravity_accuracy(75.0, 7.2)
+        >>> calculate_gravity_accuracy(75.0, 7.2)  # Strong bullish prediction vs strong opening gap up
         92.8
         
-        >>> calculate_gravity_accuracy(-30.0, -2.8)
+        >>> calculate_gravity_accuracy(-30.0, -2.8)  # Bearish prediction vs opening gap down
         99.2
     """
     try:
-        # Normalize the -100 to 100 score to match price movement scale
-        # Divide by 10 to convert sentiment scale to price change scale
+        # Normalize the -100 to 100 score to match opening gap scale
+        # Divide by 10 to convert sentiment scale to opening gap scale
         normalized_prediction = predicted_score / 10.0
         
-        # Calculate absolute error between prediction and actual
-        error = abs(normalized_prediction - price_change_percent)
+        # Calculate absolute error between prediction and actual opening gap
+        error = abs(normalized_prediction - opening_gap_percent)
         
         # Convert error to accuracy percentage (100% - error impact)
         # Error impact is multiplied by 10 to make it more sensitive
@@ -124,8 +124,8 @@ def analyze_prediction_performance(predictions_data: List[Dict]) -> Dict:
         if 'gravity_accuracy' in data and data['gravity_accuracy'] is not None:
             accuracies.append(float(data['gravity_accuracy']))
             
-        if 'predicted_score' in data and 'price_change_percent' in data:
-            if calculate_directional_accuracy(data['predicted_score'], data['price_change_percent']):
+        if 'predicted_score' in data and 'opening_gap_percent' in data:
+            if calculate_directional_accuracy(data['predicted_score'], data['opening_gap_percent']):
                 correct_directions += 1
     
     avg_accuracy = sum(accuracies) / len(accuracies) if accuracies else 0.0

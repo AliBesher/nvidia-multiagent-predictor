@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.workflow_manager import WorkflowManager
-from utils.market_data_fetcher import MarketDataFetcher
+from data.market_data_fetcher import MarketDataFetcher
 
 print("\n" + "="*60)
 print("All Market Closure Scenarios Test")

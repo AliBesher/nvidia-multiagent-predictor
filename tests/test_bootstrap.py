@@ -6,8 +6,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import os
 os.environ['TESTING'] = 'true'
 
-from utils.database_manager import DatabaseManager
-from utils.market_data_fetcher import MarketDataFetcher
+from data.database_manager import DatabaseManager
+from data.market_data_fetcher import MarketDataFetcher
 from datetime import datetime
 
 # Initialize

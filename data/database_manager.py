@@ -1,11 +1,13 @@
 """
 Database Manager for NVIDIA Stock Prediction System
 Handles all PostgreSQL database operations for market data and articles
+Operates strictly on New York Time (EST/EDT) for financial accuracy
 """
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
+import pytz
 from typing import Dict, List, Optional, Any
 from config.settings import DB_CONFIG
 from utils.logger import setup_logger
@@ -14,12 +16,46 @@ logger = setup_logger(__name__)
 
 
 class DatabaseManager:
-    """Manage all database operations for stock prediction system"""
+    """Manage all database operations for stock prediction system with NY timezone reference"""
     
     def __init__(self):
-        """Initialize database manager with connection config"""
+        """Initialize database manager with strict NY timezone operations"""
         self.config = DB_CONFIG
-        logger.info("DatabaseManager initialized")
+        
+        # PRIMARY TIMEZONE REFERENCE: New York (EST/EDT)
+        self.ny_tz = pytz.timezone('America/New_York')
+        self.israel_tz = pytz.timezone('Asia/Jerusalem')
+        
+        # Print timezone validation on every initialization
+        self._print_timezone_validation()
+        
+        logger.info("DatabaseManager initialized with NY timezone reference")
+    
+    def _print_timezone_validation(self):
+        """Print timezone validation: [Israel Time] | [NY Time] | [Active Trading Day]"""
+        now_utc = datetime.now(pytz.UTC)
+        now_israel = now_utc.astimezone(self.israel_tz)
+        now_ny = now_utc.astimezone(self.ny_tz)
+        
+        # Determine active trading day (current NY date)
+        active_trading_day = now_ny.strftime('%Y-%m-%d')
+        
+        print(f"🌍 TIMEZONE VALIDATION:")
+        print(f"   Current Israel Time: {now_israel.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        print(f"   Current Market Time: {now_ny.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        print(f"   Active Trading Day:  {active_trading_day}")
+        print()
+        
+        logger.info(f"Timezone Validation - Israel: {now_israel} | NY: {now_ny} | Trading Day: {active_trading_day}")
+    
+    def get_ny_trading_date(self) -> str:
+        """Get current trading date in New York timezone"""
+        ny_now = datetime.now(self.ny_tz)
+        return ny_now.strftime('%Y-%m-%d')
+    
+    def get_ny_datetime(self) -> datetime:
+        """Get current datetime in New York timezone"""
+        return datetime.now(self.ny_tz)
     
     def get_connection(self):
         """
@@ -160,6 +196,31 @@ class DatabaseManager:
                 conn.close()
             return False
     
+    def _run_migrations(self) -> None:
+        """
+        Run database migrations to ensure schema is up to date
+        """
+        try:
+            # Check if full_content column exists in articles table
+            check_column_sql = """
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'articles' AND column_name = 'full_content'
+            """
+            
+            result = self.execute_sql(check_column_sql)
+            
+            if not result:  # Column doesn't exist, add it
+                logger.info("🔧 Running migration: Adding full_content column to articles table")
+                alter_sql = "ALTER TABLE articles ADD COLUMN full_content TEXT"
+                self.execute_sql(alter_sql)
+                logger.info("✅ Migration completed: full_content column added")
+            else:
+                logger.info("✅ Database schema is up to date")
+                
+        except Exception as e:
+            logger.warning(f"Migration warning: {str(e)}")
+    
     def save_article(self, article: Dict[str, Any]) -> bool:
         """
         Save a news article to database
@@ -176,8 +237,8 @@ class DatabaseManager:
             
             query = """
                 INSERT INTO articles (
-                    date, url, source, title, summary, sentiment_score, article_type
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    date, url, source, title, summary, full_content, sentiment_score, article_type
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT DO NOTHING
             """
             cursor.execute(query, (
@@ -185,7 +246,8 @@ class DatabaseManager:
                 article.get('url'),
                 article.get('source'),
                 article.get('title'),
-                article.get('summary'),
+                article.get('summary', ''),  # Keep snippet for backward compatibility
+                article.get('full_content', ''),  # Full scraped content
                 article.get('sentiment_score'),
                 article.get('article_type', 'company')  # Default to 'company' for backward compatibility
             ))
@@ -203,9 +265,63 @@ class DatabaseManager:
                 conn.close()
             return False
     
+    def update_next_day_opening_result(self, previous_date: str, next_day_open: float) -> bool:
+        """
+        Update previous day's next_day_open and calculate opening gap percentage
+        
+        Args:
+            previous_date: Previous trading day date in YYYY-MM-DD format
+            next_day_open: Today's opening price
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Get previous day's close price
+            cursor.execute("SELECT close_price FROM daily_data WHERE date = %s", (previous_date,))
+            result = cursor.fetchone()
+            
+            if not result:
+                logger.warning(f"No data found for previous date {previous_date}")
+                cursor.close()
+                conn.close()
+                return False
+            
+            previous_close = float(result[0])
+            # Calculate opening gap percentage: (next_day_open - current_close) / current_close * 100
+            opening_gap_percent = ((next_day_open - previous_close) / previous_close) * 100
+            
+            # Update previous day's row with opening gap data
+            query = """
+                UPDATE daily_data 
+                SET next_day_open = %s, 
+                    price_change_percent = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE date = %s
+            """
+            cursor.execute(query, (next_day_open, opening_gap_percent, previous_date))
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            logger.info(f"Updated opening gap for {previous_date}: ${next_day_open:.2f} (gap: {opening_gap_percent:+.2f}%)")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error updating next day opening result: {str(e)}")
+            if conn:
+                conn.rollback()
+                conn.close()
+            return False
+    
     def update_next_day_result(self, previous_date: str, next_day_close: float) -> bool:
         """
-        Update previous day's next_day_close and calculate price change
+        Update previous day's next_day_close and calculate close-to-close price change
+        NOTE: For opening gap predictions, use update_next_day_opening_result() instead
         
         Args:
             previous_date: Previous trading day date in YYYY-MM-DD format

@@ -5,12 +5,14 @@ Coordinates all agents and manages the daily workflow
 
 from datetime import datetime
 from typing import Dict, Optional, List
+import pytz
 from agents.base_agent import BaseAgent
 from agents.news_agent import NewsAgent
 from agents.sentiment_agent import SentimentAgent
 from agents.prediction_agent import PredictionAgent
-from utils.market_data_fetcher import MarketDataFetcher
-from utils.database_manager import DatabaseManager
+from agents.strategy_agent import StrategyAgent
+from data.market_data_fetcher import MarketDataFetcher
+from data.database_manager import DatabaseManager
 from utils.workflow_manager import WorkflowManager
 from config.settings import MAX_NEWS_ARTICLES
 from utils.logger import setup_logger, log_section_header
@@ -29,11 +31,16 @@ class OrchestratorAgent(BaseAgent):
         self.news_agent = NewsAgent()
         self.sentiment_agent = SentimentAgent()
         self.prediction_agent = PredictionAgent()
+        self.strategy_agent = StrategyAgent()
         self.market_fetcher = MarketDataFetcher()
         self.db = DatabaseManager()
         self.workflow = WorkflowManager()
         
-        logger.info("OrchestratorAgent initialized with all components")
+        # Initialize timezone objects for automatic DST handling
+        self.est_tz = pytz.timezone('America/New_York')
+        self.ist_tz = pytz.timezone('Asia/Jerusalem')
+        
+        logger.info("OrchestratorAgent initialized with all components and timezone logic")
     
     
     def run_daily_workflow(self, date: Optional[str] = None, dry_run: bool = False) -> Dict:
@@ -102,22 +109,29 @@ class OrchestratorAgent(BaseAgent):
                 market_data = self._collect_market_data(last_trading_day, dry_run)
                 result["market_data_collected"] = market_data is not None
             
-            # Step 2: Collect news articles (company + macro) for today
+            # Step 2: Collect news articles (company + macro) for today with timezone categorization
             company_articles, macro_articles = self._collect_news_articles(ny_today)
+            
+            # Step 2.5: Apply Israel timezone categorization logic
+            categorized_articles = self._apply_israel_timezone_logic(company_articles, macro_articles)
             result["articles_collected"] = len(company_articles) + len(macro_articles)
+            result["intraday_articles"] = categorized_articles["intraday_count"]
+            result["gap_force_articles"] = categorized_articles["gap_force_count"]
+            result["timezone_summary"] = categorized_articles["summary"]
             
             if not company_articles and not macro_articles:
                 logger.warning("No new articles collected - sentiment analysis skipped")
                 result["errors"].append("No articles found")
             else:
-                # Step 3: Analyze sentiment (separate company and macro)
-                sentiment_result = self._analyze_sentiment(company_articles, macro_articles)
+                # Step 3: Analyze sentiment (separate company and macro) with timezone context
+                sentiment_result = self._analyze_sentiment_with_timezone(company_articles, macro_articles, categorized_articles)
                 result["company_sentiment"] = sentiment_result["company_sentiment"]
                 result["macro_sentiment"] = sentiment_result["macro_sentiment"]
                 result["sentiment_score"] = sentiment_result["combined_score"]
                 result["sentiment_confidence"] = sentiment_result["combined_confidence"]
                 result["company_factors"] = sentiment_result.get("company_factors", "")
                 result["macro_factors"] = sentiment_result.get("macro_factors", "")
+                result["timezone_impact"] = sentiment_result.get("timezone_impact", "")
                 
                 # Step 4: Save articles to database (linked to last trading day)
                 if not dry_run:
@@ -127,7 +141,14 @@ class OrchestratorAgent(BaseAgent):
                 if not dry_run:
                     self._update_sentiment_simple(last_trading_day, sentiment_result)
             
-            # Step 6: Make prediction (if enough data)
+            # Step 6: Calculate Hybrid Signal with Dynamic Strategy Weights
+            hybrid_result = self._calculate_hybrid_prediction(sentiment_result, last_trading_day)
+            result["hybrid_prediction"] = hybrid_result.get("signal_type")
+            result["hybrid_confidence"] = hybrid_result.get("confidence") 
+            result["hybrid_final_gravity"] = hybrid_result.get("final_gravity")
+            result["strategy_weights"] = hybrid_result.get("strategy_weights")
+            
+            # Step 7: Make ML prediction (if enough data) as additional validation
             prediction_result = self._make_prediction()
             result["prediction"] = prediction_result.get("prediction")
             result["prediction_confidence"] = prediction_result.get("confidence", 0.0)
@@ -239,48 +260,200 @@ class OrchestratorAgent(BaseAgent):
             logger.error(f"Error collecting news: {str(e)}")
             return [], []
     
-    def _analyze_sentiment(self, company_articles: List[Dict], macro_articles: List[Dict]) -> Dict:
+    def _apply_israel_timezone_logic(self, company_articles: List[Dict], macro_articles: List[Dict]) -> Dict:
         """
-        Analyze sentiment of company and macro articles separately
+        Apply Israel timezone logic to categorize news articles
+        
+        Rules:
+        - If script runs at 00:00 IST:
+          * News from 16:30 to 23:00 IST = 'Intraday News' (reflected in current price)
+          * News from 23:00 to 00:00 IST = 'Gap Force News' (impacts tomorrow's opening)
+        - Dynamic EST ↔ IST conversion handles Daylight Saving Time automatically
         
         Args:
             company_articles: List of company-specific articles
             macro_articles: List of macro/market articles
         
         Returns:
-            Sentiment analysis results with separate and combined scores
+            Dictionary with categorization results
         """
-        logger.info("\n🎯 STEP 3: Analyzing Sentiment")
+        logger.info("\n*** STEP 2.5: Applying Israel Timezone Logic")
         logger.info("-" * 60)
         
         try:
-            # Use new method to analyze both types separately
+            # Get current time in both timezones
+            ny_now = datetime.now(self.est_tz)
+            israel_now = ny_now.astimezone(self.ist_tz)
+            
+            logger.info(f"Current EST: {ny_now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+            logger.info(f"Current IST: {israel_now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+            
+            # Calculate timezone offset (dynamic for DST)
+            offset_hours = (israel_now.utcoffset() - ny_now.utcoffset()).total_seconds() / 3600
+            logger.info(f"Dynamic IST-EST offset: +{offset_hours:.1f} hours")
+            
+            all_articles = company_articles + macro_articles
+            intraday_articles = []
+            gap_force_articles = []
+            
+            for article in all_articles:
+                # Parse article timestamp and convert to Israel timezone
+                article_israel_time = self._convert_article_to_israel_time(article)
+                
+                if article_israel_time:
+                    article_hour = article_israel_time.hour
+                    article_minute = article_israel_time.minute
+                    
+                    # Categorize based on Israel time
+                    if (article_hour == 16 and article_minute >= 30) or (17 <= article_hour < 23):
+                        # 16:30-23:00 IST = Intraday News
+                        article['timezone_category'] = 'intraday'
+                        article['israel_timestamp'] = article_israel_time.strftime('%H:%M IST')
+                        intraday_articles.append(article)
+                    elif article_hour == 23 or (article_hour == 0):
+                        # 23:00-00:00 IST = Gap Force News  
+                        article['timezone_category'] = 'gap_force'
+                        article['israel_timestamp'] = article_israel_time.strftime('%H:%M IST')
+                        gap_force_articles.append(article)
+                    else:
+                        # Other times - general categorization
+                        article['timezone_category'] = 'other'
+                        article['israel_timestamp'] = article_israel_time.strftime('%H:%M IST')
+                else:
+                    # Unable to determine timestamp
+                    article['timezone_category'] = 'unknown'
+                    article['israel_timestamp'] = 'Unknown time'
+            
+            # Log categorization results
+            logger.info(f"*** Timezone categorization complete:")
+            logger.info(f"  Intraday News (16:30-23:00 IST): {len(intraday_articles)} articles")
+            logger.info(f"  Gap Force News (23:00-00:00 IST): {len(gap_force_articles)} articles")
+            logger.info(f"  Other/Unknown: {len(all_articles) - len(intraday_articles) - len(gap_force_articles)} articles")
+            
+            if intraday_articles:
+                logger.info("  Intraday articles:")
+                for article in intraday_articles[:3]:  # Show first 3
+                    logger.info(f"    [{article['israel_timestamp']}] {article['title'][:50]}...")
+            
+            if gap_force_articles:
+                logger.info("  Gap Force articles:")
+                for article in gap_force_articles[:3]:  # Show first 3
+                    logger.info(f"    [{article['israel_timestamp']}] {article['title'][:50]}...")
+            
+            return {
+                "intraday_articles": intraday_articles,
+                "gap_force_articles": gap_force_articles,
+                "intraday_count": len(intraday_articles),
+                "gap_force_count": len(gap_force_articles),
+                "offset_hours": offset_hours,
+                "summary": f"Intraday: {len(intraday_articles)}, Gap Force: {len(gap_force_articles)}"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error applying timezone logic: {str(e)}")
+            return {
+                "intraday_articles": [],
+                "gap_force_articles": [],
+                "intraday_count": 0,
+                "gap_force_count": 0,
+                "offset_hours": 7.0,  # Default offset
+                "summary": f"Error: {str(e)}"
+            }
+    
+    def _convert_article_to_israel_time(self, article: Dict) -> Optional[datetime]:
+        """
+        Convert article timestamp to Israel timezone
+        
+        Args:
+            article: Article dictionary with timestamp information
+        
+        Returns:
+            datetime object in Israel timezone or None if conversion fails
+        """
+        try:
+            # Try to parse the article timestamp
+            if 'published_date' in article and article['published_date']:
+                timestamp_str = article['published_date']
+            elif 'date' in article and article['date']:
+                timestamp_str = article['date']
+            else:
+                # Use current time as fallback
+                return datetime.now(self.ist_tz)
+            
+            # Parse the timestamp (handle various formats)
+            from dateutil import parser
+            article_dt = parser.parse(timestamp_str)
+            
+            # If timezone-naive, assume EST
+            if article_dt.tzinfo is None:
+                article_dt = self.est_tz.localize(article_dt)
+            
+            # Convert to Israel timezone
+            israel_dt = article_dt.astimezone(self.ist_tz)
+            return israel_dt
+            
+        except Exception as e:
+            # If parsing fails, use current Israel time
+            logger.warning(f"Could not parse article timestamp: {str(e)}")
+            return datetime.now(self.ist_tz)
+    
+    def _analyze_sentiment_with_timezone(self, company_articles: List[Dict], macro_articles: List[Dict], timezone_data: Dict) -> Dict:
+        """
+        Analyze sentiment of company and macro articles with timezone context
+        
+        Args:
+            company_articles: List of company-specific articles
+            macro_articles: List of macro/market articles
+            timezone_data: Timezone categorization data
+        
+        Returns:
+            Sentiment analysis results with timezone impact information
+        """
+        logger.info("\n🎯 STEP 3: Analyzing Sentiment with Timezone Context")
+        logger.info("-" * 60)
+        
+        try:
+            # Use existing sentiment analysis method
             sentiment_result = self.sentiment_agent.analyze_articles_by_type(
                 company_articles, macro_articles
             )
             
-            logger.info(f"✓ Sentiment analysis complete:")
+            # Add timezone impact analysis
+            intraday_count = timezone_data["intraday_count"]
+            gap_force_count = timezone_data["gap_force_count"]
+            
+            timezone_impact = ""
+            if gap_force_count > 0:
+                timezone_impact = f"Gap Force Risk: {gap_force_count} post-market articles may impact tomorrow's opening. "
+            if intraday_count > 0:
+                timezone_impact += f"Intraday Context: {intraday_count} articles reflect current market conditions."
+            
+            sentiment_result["timezone_impact"] = timezone_impact
+            
+            logger.info(f"✓ Sentiment analysis with timezone context complete:")
             logger.info(f"  Company Score: {sentiment_result['company_sentiment']:.2f}")
             logger.info(f"  Macro Score: {sentiment_result['macro_sentiment']:.2f}")
             logger.info(f"  Combined Score: {sentiment_result['combined_score']:.2f}")
             logger.info(f"  Confidence: {sentiment_result['combined_confidence']}")
+            logger.info(f"  Timezone Impact: {timezone_impact}")
             
             return sentiment_result
             
         except Exception as e:
-            logger.error(f"Error analyzing sentiment: {str(e)}")
+            logger.error(f"Error analyzing sentiment with timezone: {str(e)}")
             return {
                 "company_sentiment": 0.0,
                 "macro_sentiment": 0.0,
                 "combined_score": 0.0,
                 "combined_confidence": "Low",
                 "company_factors": f"Error: {str(e)}",
-                "macro_factors": f"Error: {str(e)}"
+                "macro_factors": f"Error: {str(e)}",
+                "timezone_impact": f"Timezone analysis failed: {str(e)}"
             }
     
     def _save_articles(self, company_articles: List[Dict], macro_articles: List[Dict], date: str) -> int:
         """
-        Save company and macro articles to database
+        Save company and macro articles to database with individual sentiment scores
         
         Args:
             company_articles: List of company-specific articles
@@ -297,18 +470,24 @@ class OrchestratorAgent(BaseAgent):
         all_articles = company_articles + macro_articles
         
         for article in all_articles:
+            # Get sentiment score from article if available (set by sentiment analysis)
+            sentiment_score = article.get('sentiment_score', None)
+            
             article_data = {
                 'date': date,
                 'url': article['url'],
                 'source': article['source'],
                 'title': article['title'],
-                'summary': article.get('snippet', ''),
-                'sentiment_score': None,  # Individual scores not used yet
+                'summary': article.get('snippet', ''),  # Keep short snippet
+                'full_content': article.get('full_content', ''),  # Full scraped content
+                'sentiment_score': sentiment_score,  # Now uses actual individual scores
                 'article_type': article.get('article_type', 'company')  # Store article type
             }
             
             if self.db.save_article(article_data):
                 saved_count += 1
+                if sentiment_score is not None:
+                    logger.info(f"✓ Saved article with sentiment score {sentiment_score:.2f}: {article['title'][:50]}...")
         
         logger.info(f"✓ Saved {saved_count}/{len(all_articles)} articles to database")
         logger.info(f"  ({len(company_articles)} company + {len(macro_articles)} macro)")
@@ -418,6 +597,56 @@ class OrchestratorAgent(BaseAgent):
         
         return success
     
+    def _calculate_hybrid_prediction(self, sentiment_result: Dict, date: str) -> Dict:
+        """
+        Calculate hybrid prediction using StrategyAgent for dynamic weights
+        
+        Args:
+            sentiment_result: Results from sentiment analysis
+            date: Date for prediction
+            
+        Returns:
+            Hybrid prediction result dictionary
+        """
+        logger.info("\n🔬 STEP 6: Calculating Hybrid Prediction with Dynamic Strategy")
+        logger.info("-" * 60)
+        
+        try:
+            info_gravity = sentiment_result.get('combined_score', 0.0)
+            
+            # Prepare news summary for strategy agent
+            news_summary = {
+                'final_sentiment': info_gravity,
+                'company_count': sentiment_result.get('company_article_count', 0),
+                'macro_count': sentiment_result.get('macro_article_count', 0),
+                'company_sentiment': sentiment_result.get('company_sentiment', 0.0),
+                'macro_sentiment': sentiment_result.get('macro_sentiment', 0.0)
+            }
+            
+            # Calculate hybrid signal with dynamic weights
+            hybrid_result = self.calculate_hybrid_signal(date, info_gravity, news_summary)
+            
+            logger.info(f"✓ Hybrid prediction complete:")
+            logger.info(f"  Signal: {hybrid_result.get('signal_type', 'N/A')}")
+            logger.info(f"  Direction: {hybrid_result.get('signal_direction', 'N/A')}")
+            logger.info(f"  Final Gravity: {hybrid_result.get('final_gravity', 0.0):+.2f}")
+            logger.info(f"  Confidence: {hybrid_result.get('confidence', 'N/A')}")
+            
+            weights = hybrid_result.get('strategy_weights', {})
+            logger.info(f"  Dynamic Weights: S{weights.get('sentiment', 0.6):.0%}/T{weights.get('technical', 0.4):.0%}")
+            
+            return hybrid_result
+            
+        except Exception as e:
+            logger.error(f"Error calculating hybrid prediction: {str(e)}")
+            return {
+                "signal_type": "ERROR",
+                "signal_direction": "UNKNOWN", 
+                "final_gravity": 0.0,
+                "confidence": "Low",
+                "strategy_weights": {"sentiment": 0.6, "technical": 0.4}
+            }
+
     def _make_prediction(self) -> Dict:
         """
         Make prediction for next trading day using ML model
@@ -607,6 +836,257 @@ class OrchestratorAgent(BaseAgent):
                 "database": "Connected"
             }
         }
+    
+    def calculate_hybrid_signal(self, date: str, info_gravity: float, news_summary: Optional[Dict] = None) -> Dict:
+        """
+        Calculate hybrid signal combining informational gravity with technical analysis using dynamic weights
+        
+        Formula: Final_Gravity = (Info_Gravity × Dynamic_Sentiment_Weight) + (Technical_Score × Dynamic_Technical_Weight)
+        
+        Args:
+            date: Date to analyze
+            info_gravity: Sentiment-based informational gravity score
+            news_summary: Summary of news analysis for strategy determination
+            
+        Returns:
+            Dictionary with hybrid analysis results
+        """
+        logger.info(f"\n🔬 CALCULATING HYBRID SIGNAL FOR {date} (DYNAMIC WEIGHTS)")
+        logger.info("=" * 70)
+        
+        try:
+            # Get technical analysis data
+            technical_data = self.market_fetcher.fetch_technical_data(date)
+            
+            if not technical_data:
+                logger.warning(f"No technical data available for {date}, using info gravity only")
+                return {
+                    "date": date,
+                    "info_gravity": info_gravity,
+                    "technical_score": 0.0,
+                    "final_gravity": info_gravity,
+                    "hybrid_confidence": "Low - No technical data",
+                    "technical_breakdown": "No data available",
+                    "strategy_weights": {
+                        "sentiment": 1.0,
+                        "technical": 0.0,
+                        "regime_analysis": "No technical data - full sentiment weight",
+                        "strategic_reasoning": "Fallback to sentiment-only analysis"
+                    },
+                    "recommendation": self._get_signal_recommendation(info_gravity)
+                }
+            
+            # Extract technical score and indicators
+            technical_score = technical_data['technical_score']
+            rsi = technical_data.get('rsi', 50)
+            momentum_3d = technical_data.get('momentum_3d', 0)
+            
+            # Prepare data for StrategyAgent
+            news_data = news_summary or {
+                'final_sentiment': info_gravity,
+                'company_count': 3,  # Default fallback
+                'macro_count': 3     # Default fallback
+            }
+            
+            tech_data = {
+                'rsi': rsi,
+                'momentum_3d': momentum_3d,
+                'tech_score': technical_score
+            }
+            
+            # Get dynamic weights from StrategyAgent
+            strategy = self.strategy_agent.determine_daily_strategy(news_data, tech_data)
+            
+            # Extract dynamic weights
+            sentiment_weight = strategy['applied_weights']['sentiment']
+            technical_weight = strategy['applied_weights']['technical']
+            
+            # DYNAMIC HYBRID FORMULA: Apply strategy-determined weights
+            final_gravity = (float(info_gravity) * sentiment_weight) + (float(technical_score) * technical_weight)
+            
+            # Determine confidence based on alignment
+            signal_alignment = self._analyze_signal_alignment(info_gravity, technical_score)
+            
+            # Create technical breakdown
+            technical_breakdown = self._format_technical_breakdown_dynamic(technical_data, strategy)
+            
+            # Get recommendation
+            recommendation = self._get_hybrid_recommendation(info_gravity, technical_score, final_gravity, signal_alignment)
+            
+            # Log detailed analysis
+            logger.info(f"🧠 STRATEGY ANALYSIS:")
+            logger.info(f"  Regime: {strategy['regime_analysis']}")
+            logger.info(f"  Weights: Sentiment {sentiment_weight:.1%} | Technical {technical_weight:.1%}")
+            logger.info(f"📊 HYBRID CALCULATION:")
+            logger.info(f"  Info Gravity (Sentiment): {info_gravity:+.2f} × {sentiment_weight:.1%} = {info_gravity * sentiment_weight:+.2f}")
+            logger.info(f"  Technical Score:          {technical_score:+.2f} × {technical_weight:.1%} = {technical_score * technical_weight:+.2f}")
+            logger.info(f"  Final Hybrid Gravity:     {final_gravity:+.2f}")
+            logger.info(f"  Signal Alignment:         {signal_alignment['status']}")
+            logger.info(f"  Confidence Level:         {signal_alignment['confidence']}")
+            logger.info(f"  Recommendation:           {recommendation}")
+            
+            return {
+                "date": date,
+                "info_gravity": info_gravity,
+                "technical_score": technical_score,
+                "final_gravity": final_gravity,
+                "hybrid_confidence": signal_alignment['confidence'],
+                "signal_alignment": signal_alignment['status'],
+                "technical_breakdown": technical_breakdown,
+                "strategy_weights": {
+                    "sentiment": sentiment_weight,
+                    "technical": technical_weight,
+                    "regime_analysis": strategy['regime_analysis'],
+                    "strategic_reasoning": strategy['strategic_reasoning'],
+                    "boundary_check": strategy['boundary_check']
+                },
+                "recommendation": recommendation,
+                "rsi": technical_data.get('rsi'),
+                "momentum_3d": technical_data.get('momentum_3d'),
+                "ma_position": technical_data.get('ma_position')
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating hybrid signal: {str(e)}")
+            return {
+                "date": date,
+                "info_gravity": info_gravity,
+                "technical_score": 0.0,
+                "final_gravity": info_gravity,
+                "hybrid_confidence": "Error",
+                "technical_breakdown": f"Error: {str(e)}",
+                "recommendation": "Unable to calculate hybrid signal"
+            }
+    
+    def _analyze_signal_alignment(self, info_gravity: float, technical_score: float) -> Dict:
+        """
+        Analyze alignment between informational and technical signals
+        
+        Args:
+            info_gravity: Sentiment-based score
+            technical_score: Technical analysis score
+            
+        Returns:
+            Dictionary with alignment analysis
+        """
+        # Convert to floats to ensure proper comparison
+        info_gravity = float(info_gravity)
+        technical_score = float(technical_score)
+        
+        info_direction = "UP" if info_gravity > 0 else "DOWN"
+        tech_direction = "UP" if technical_score > 0 else "DOWN"
+        
+        if info_direction == tech_direction:
+            # Signals align
+            strength = min(abs(info_gravity), abs(technical_score))
+            if strength > 5:
+                return {"status": "Strong Alignment", "confidence": "High"}
+            elif strength > 2:
+                return {"status": "Moderate Alignment", "confidence": "Medium"}
+            else:
+                return {"status": "Weak Alignment", "confidence": "Low"}
+        else:
+            # Signals conflict
+            info_strength = abs(info_gravity)
+            tech_strength = abs(technical_score)
+            
+            if abs(info_strength - tech_strength) < 2:
+                return {"status": "Signal Conflict - Equal Strength", "confidence": "Very Low"}
+            elif info_strength > tech_strength:
+                return {"status": "Info Dominance", "confidence": "Low-Medium"}
+            else:
+                return {"status": "Technical Dominance", "confidence": "Low-Medium"}
+    
+    def _format_technical_breakdown(self, technical_data: Dict) -> str:
+        """
+        Format technical data into readable breakdown (legacy version)
+        
+        Args:
+            technical_data: Technical analysis data
+            
+        Returns:
+            Formatted breakdown string
+        """
+        try:
+            breakdown = f"RSI: {technical_data['rsi']} ({technical_data['rsi_pressure']}), "
+            breakdown += f"Momentum: {technical_data['momentum_3d']:+.1f}% ({technical_data['momentum_direction']}), "
+            breakdown += f"MA Position: {technical_data['ma_position']}"
+            return breakdown
+        except Exception as e:
+            return f"Technical breakdown error: {str(e)}"
+    
+    def _format_technical_breakdown_dynamic(self, technical_data: Dict, strategy: Dict) -> str:
+        """
+        Format technical data with dynamic weight strategy analysis
+        
+        Args:
+            technical_data: Technical analysis data
+            strategy: Strategy analysis from StrategyAgent
+            
+        Returns:
+            Formatted breakdown string with strategy context
+        """
+        try:
+            weights = strategy['applied_weights']
+            breakdown = f"📊 DYNAMIC HYBRID ANALYSIS:\n"
+            breakdown += f"  Sentiment Weight: {weights['sentiment']:.1%} | Technical Weight: {weights['technical']:.1%}\n"
+            breakdown += f"  Info Gravity: {technical_data.get('info_gravity', 0):+.2f} × {weights['sentiment']:.1%} = {technical_data.get('info_gravity', 0) * weights['sentiment']:+.2f}\n"
+            breakdown += f"  Technical Score: {technical_data['technical_score']:+.2f} × {weights['technical']:.1%} = {technical_data['technical_score'] * weights['technical']:+.2f}\n"
+            breakdown += f"\n🧠 STRATEGY REGIME: {strategy['regime_analysis']}\n"
+            breakdown += f"📈 TECHNICAL DETAILS: RSI {technical_data['rsi']} ({technical_data['rsi_pressure']}), "
+            breakdown += f"Momentum {technical_data['momentum_3d']:+.1f}% ({technical_data['momentum_direction']})"
+            return breakdown
+        except Exception as e:
+            return f"Dynamic breakdown error: {str(e)}"
+    
+    def _get_signal_recommendation(self, score: float) -> str:
+        """
+        Get recommendation based on single score
+        
+        Args:
+            score: Signal score
+            
+        Returns:
+            Recommendation string
+        """
+        if score > 5:
+            return "Strong BUY signal"
+        elif score > 2:
+            return "Moderate BUY signal"
+        elif score > 0:
+            return "Weak BUY signal"
+        elif score < -5:
+            return "Strong SELL signal"
+        elif score < -2:
+            return "Moderate SELL signal"
+        else:
+            return "Weak SELL signal"
+    
+    def _get_hybrid_recommendation(self, info_gravity: float, technical_score: float, 
+                                 final_gravity: float, alignment: Dict) -> str:
+        """
+        Get recommendation based on hybrid analysis
+        
+        Args:
+            info_gravity: Information gravity score
+            technical_score: Technical score
+            final_gravity: Combined final score
+            alignment: Signal alignment data
+            
+        Returns:
+            Hybrid recommendation string
+        """
+        base_rec = self._get_signal_recommendation(final_gravity)
+        
+        # Add context based on alignment
+        if alignment['status'] == "Signal Conflict - Equal Strength":
+            return f"{base_rec} (⚠️ CONFLICTING SIGNALS - Use caution)"
+        elif "Conflict" in alignment['status']:
+            return f"{base_rec} (Mixed signals - {alignment['status']})"
+        elif alignment['confidence'] == "High":
+            return f"{base_rec} (✅ Strong agreement between sentiment & technicals)"
+        else:
+            return f"{base_rec} ({alignment['status']})"
 
 
 # ============================================

@@ -166,7 +166,32 @@ def print_workflow_results(result: dict):
     
     # Prediction section
     print(f"\n" + "-"*60)
-    print("PREDICTION FOR NEXT TRADING DAY")
+    print("HYBRID PREDICTION (DYNAMIC STRATEGY)")
+    print("-"*60)
+    
+    # Primary prediction from hybrid system
+    hybrid_signal = result.get('hybrid_prediction')
+    hybrid_confidence = result.get('hybrid_confidence', 'N/A')
+    hybrid_gravity = result.get('hybrid_final_gravity', 0.0)
+    strategy_weights = result.get('strategy_weights', {})
+    
+    if hybrid_signal:
+        if 'BUY' in hybrid_signal:
+            print(f"\n  📈 HYBRID SIGNAL: {hybrid_signal}")
+        elif 'SELL' in hybrid_signal:
+            print(f"\n  📉 HYBRID SIGNAL: {hybrid_signal}")
+        else:
+            print(f"\n  ⚪ HYBRID SIGNAL: {hybrid_signal}")
+        
+        print(f"  Final Gravity: {hybrid_gravity:+.2f}")
+        print(f"  Confidence: {hybrid_confidence}")
+        print(f"  Strategy: Sentiment {strategy_weights.get('sentiment', 0.6):.0%} | Technical {strategy_weights.get('technical', 0.4):.0%}")
+    else:
+        print(f"\n  ⚠️  Hybrid prediction not available")
+    
+    # Secondary ML prediction (if available)
+    print(f"\n" + "-"*60)
+    print("ML PREDICTION (VALIDATION)")
     print("-"*60)
     
     if result.get('can_predict'):
@@ -175,14 +200,14 @@ def print_workflow_results(result: dict):
         
         # Colorful prediction display
         if prediction == 'UP':
-            print(f"\n  📈 PREDICTION: {prediction}")
+            print(f"\n  📈 ML PREDICTION: {prediction}")
         else:
-            print(f"\n  📉 PREDICTION: {prediction}")
+            print(f"\n  📉 ML PREDICTION: {prediction}")
         
         print(f"  Confidence: {confidence:.1%}")
     else:
         message = result.get('prediction_message', 'Not available')
-        print(f"\n  ⚠️  Cannot predict yet")
+        print(f"\n  ⚠️  ML prediction not ready")
         print(f"  Reason: {message}")
     
     if result.get('errors'):

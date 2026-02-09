@@ -10,7 +10,7 @@ from datetime import datetime
 
 from agents.base_agent import BaseAgent
 from models.prediction_model import PredictionModel, MIN_TRAINING_SAMPLES, IDEAL_TRAINING_SAMPLES
-from utils.database_manager import DatabaseManager
+from data.database_manager import DatabaseManager
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
