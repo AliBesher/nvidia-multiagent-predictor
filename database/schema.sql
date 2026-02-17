@@ -1,128 +1,137 @@
--- Modern Database Schema for NVIDIA Stock Prediction System
--- Updated: February 9, 2026 (Consolidated from migrations)
--- Includes: Macro sentiment, opening gap support, gravity accuracy, and corrected foreign keys
+-- ============================================================================
+-- Database Schema for NVIDIA Stock Prediction System
+-- Updated: February 17, 2026 (Synced with live database)
+-- Includes: Market data, sentiment analysis, gravity system, ML predictions
+-- ============================================================================
 
 -- Drop tables if they exist (for clean setup)
+DROP VIEW IF EXISTS gravity_performance CASCADE;
+DROP VIEW IF EXISTS daily_summary CASCADE;
+DROP VIEW IF EXISTS recent_predictions CASCADE;
 DROP TABLE IF EXISTS articles CASCADE;
 DROP TABLE IF EXISTS daily_data CASCADE;
 
--- ============================================
+-- ============================================================================
 -- Table: daily_data
 -- Stores daily stock prices, technical indicators, sentiment, and predictions
--- ============================================
+-- ============================================================================
 CREATE TABLE daily_data (
     id SERIAL PRIMARY KEY,
     date DATE UNIQUE NOT NULL,
-    
+
     -- Stock Price Data
-    open_price DECIMAL(10,2),
-    close_price DECIMAL(10,2),
-    high_price DECIMAL(10,2),
-    low_price DECIMAL(10,2),
-    volume BIGINT,
-    
+    open_price NUMERIC(10,2),            -- Daily opening price
+    close_price NUMERIC(10,2),           -- Daily closing price
+    high_price NUMERIC(10,2),            -- Daily high price
+    low_price NUMERIC(10,2),             -- Daily low price
+    volume BIGINT,                       -- Daily trading volume
+
     -- Technical Indicators
-    rsi DECIMAL(5,2),                    -- Relative Strength Index (0-100)
-    macd DECIMAL(10,4),                  -- MACD value
-    macd_signal DECIMAL(10,4),           -- MACD signal line
-    moving_avg_50 DECIMAL(10,2),         -- 50-day moving average
-    moving_avg_200 DECIMAL(10,2),        -- 200-day moving average
-    
-    -- Enhanced Sentiment Analysis (separated by type)
-    sentiment_score DECIMAL(6,2),        -- Combined sentiment score (weighted: 60% company + 40% macro)
-    company_sentiment DECIMAL(6,2),      -- Sentiment from NVIDIA-specific news (-100 to +100)
-    macro_sentiment DECIMAL(6,2),        -- Sentiment from macro/market news (-100 to +100)
-    
-    -- Next Day Results (enhanced for opening gap prediction)
-    next_day_close DECIMAL(10,2),        -- Actual next day closing price
-    next_day_open DECIMAL(10,2),         -- Actual next day opening price for gap calculation
-    price_change_percent DECIMAL(6,2),   -- Opening gap percentage: (next_day_open - current_close) / current_close * 100
-    
-    -- Gravity Accuracy System
-    gravity_score DECIMAL(6,2),          -- Informational gravity score for truth confrontation
-    gravity_accuracy DECIMAL(5,2),       -- Accuracy of gravity prediction vs actual movement
-    gravity_grade CHAR(1),               -- Letter grade for gravity prediction (A-F)
-    
-    -- Predictions (ML model)
-    prediction DECIMAL(10,2),            -- Predicted next day price
-    prediction_accuracy DECIMAL(6,2),    -- Accuracy of prediction vs actual
-    
+    rsi NUMERIC(5,2),                    -- Relative Strength Index (0-100)
+    macd NUMERIC(10,4),                  -- MACD value
+    macd_signal NUMERIC(10,4),           -- MACD signal line
+    moving_avg_50 NUMERIC(10,2),         -- 50-day moving average
+    moving_avg_200 NUMERIC(10,2),        -- 200-day moving average
+
+    -- Sentiment Analysis (separated by type)
+    sentiment_score NUMERIC(6,2),        -- Combined sentiment (weighted: 60% company + 40% macro)
+    company_sentiment NUMERIC(6,2),      -- Sentiment from NVIDIA-specific news (-100 to +100)
+    macro_sentiment NUMERIC(6,2),        -- Sentiment from macro/market news (-100 to +100)
+    sentiment_range VARCHAR(50),         -- Descriptive range label for sentiment level
+
+    -- Next Day Results (for opening gap prediction)
+    next_day_close NUMERIC(10,2),        -- Actual next day closing price
+    next_day_open NUMERIC(10,2),         -- Actual next day opening price for gap calculation
+    price_change_percent NUMERIC(6,2),   -- Opening gap %: (next_day_open - current_close) / current_close * 100
+
+    -- Gravity System (Informational Gravity Model)
+    gravity_score NUMERIC(6,2),          -- Gravity score from hybrid analysis (truth confrontation)
+    gravity_accuracy NUMERIC(6,2),       -- Accuracy of gravity prediction vs actual movement (0-100%)
+    gravity_grade VARCHAR(2),            -- Letter grade for gravity accuracy (A+, A, B+, B, C+, C, D, F)
+
+    -- ML Prediction
+    prediction NUMERIC(10,2),            -- ML model prediction value (1.0 = UP, -1.0 = DOWN)
+    prediction_accuracy NUMERIC(6,2),    -- Accuracy of prediction vs actual result
+
+    -- Information Theory
+    entropy VARCHAR(20),                 -- Market entropy/uncertainty level
+
     -- Metadata
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Optimized indexes
+-- Indexes for daily_data
 CREATE INDEX idx_daily_data_date ON daily_data(date);
 CREATE INDEX idx_daily_data_next_day_open ON daily_data(next_day_open);
 CREATE INDEX idx_daily_data_gravity_grade ON daily_data(gravity_grade);
 
--- ============================================
+-- ============================================================================
 -- Table: articles
--- Stores news articles used for sentiment analysis (NO foreign key constraint)
--- ============================================
+-- Stores news articles used for sentiment analysis
+-- NOTE: NO foreign key to daily_data — articles can exist for weekends/holidays
+-- ============================================================================
 CREATE TABLE articles (
     id SERIAL PRIMARY KEY,
     date DATE NOT NULL,
-    
+
     -- Article Information
-    url TEXT,
+    url TEXT,                            -- Article URL (unique per date)
     source VARCHAR(255),                 -- News source (Bloomberg, Reuters, etc.)
-    title TEXT,
+    title TEXT,                          -- Article headline
     summary TEXT,                        -- Short snippet from search results
     full_content TEXT,                   -- Complete article content (up to 10,000 chars)
-    
+
     -- Article Classification
-    article_type VARCHAR(20) DEFAULT 'company',  -- Type: 'company' (NVIDIA-specific) or 'macro' (market/economy-wide)
-    
+    article_type VARCHAR(20) DEFAULT 'company',  -- 'company' (NVIDIA-specific) or 'macro' (market/economy)
+
     -- Sentiment Analysis
-    sentiment_score DECIMAL(6,2),        -- Individual article sentiment (-100 to +100)
-    
+    sentiment_score NUMERIC(6,2),        -- Individual article sentiment (-100 to +100)
+
+    -- Gravity System
+    gravitational_mass NUMERIC,          -- Calculated gravitational mass for gravity model
+
     -- Metadata
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    
-    -- NOTE: NO foreign key constraint to allow weekend/holiday articles
-    -- Articles can be saved for any date, independent of daily_data
 );
 
--- Optimized indexes
+-- Unique constraint: one URL per date (prevents duplicate articles)
+CREATE UNIQUE INDEX unique_article_per_date ON articles(date, url);
+
+-- Indexes for articles
 CREATE INDEX idx_articles_date ON articles(date);
 CREATE INDEX idx_articles_source ON articles(source);
 CREATE INDEX idx_articles_type ON articles(article_type);
+CREATE INDEX idx_articles_type_date ON articles(article_type, date);
 
--- ============================================
--- Enhanced Views with Modern Features
--- ============================================
-
--- View: recent_predictions (enhanced with gravity system)
+-- ============================================================================
+-- View: recent_predictions
+-- Quick view of recent prediction results
+-- ============================================================================
 CREATE VIEW recent_predictions AS
-SELECT 
+SELECT
     date,
     close_price,
     prediction,
     next_day_close,
-    next_day_open,
     prediction_accuracy,
     sentiment_score,
-    company_sentiment,
-    macro_sentiment,
-    gravity_score,
-    gravity_accuracy,
-    gravity_grade,
-    price_change_percent as opening_gap_percent,
-    CASE 
+    CASE
         WHEN prediction_accuracy IS NOT NULL THEN 'Completed'
         WHEN prediction IS NOT NULL THEN 'Pending'
         ELSE 'No Prediction'
     END as status
 FROM daily_data
-WHERE prediction IS NOT NULL OR gravity_score IS NOT NULL
+WHERE prediction IS NOT NULL
 ORDER BY date DESC
 LIMIT 30;
 
--- View: daily_summary (enhanced with article types and gravity)
+-- ============================================================================
+-- View: daily_summary
+-- Full daily overview joining daily_data with article counts
+-- ============================================================================
 CREATE VIEW daily_summary AS
-SELECT 
+SELECT
     dd.date,
     dd.close_price,
     dd.volume,
@@ -148,9 +157,12 @@ LEFT JOIN articles a ON dd.date = a.date
 GROUP BY dd.id, dd.date
 ORDER BY dd.date DESC;
 
--- View: gravity_performance (new - tracks prediction accuracy)
+-- ============================================================================
+-- View: gravity_performance
+-- Aggregate gravity model accuracy by grade
+-- ============================================================================
 CREATE VIEW gravity_performance AS
-SELECT 
+SELECT
     gravity_grade,
     COUNT(*) as prediction_count,
     AVG(gravity_accuracy) as avg_accuracy,
@@ -161,19 +173,25 @@ WHERE gravity_grade IS NOT NULL AND gravity_accuracy IS NOT NULL
 GROUP BY gravity_grade
 ORDER BY gravity_grade;
 
--- ============================================
--- Modern Comments for Documentation
--- ============================================
-COMMENT ON TABLE daily_data IS 'Enhanced daily stock data with gravity system, macro sentiment, and opening gap support';
-COMMENT ON TABLE articles IS 'News articles with type classification (company/macro) and no foreign key constraints';
+-- ============================================================================
+-- Column Documentation
+-- ============================================================================
+COMMENT ON TABLE daily_data IS 'Daily stock data with gravity system, sentiment analysis, and ML predictions';
+COMMENT ON TABLE articles IS 'News articles with type classification (company/macro) — no FK constraint to daily_data';
 
-COMMENT ON COLUMN daily_data.sentiment_score IS 'Combined sentiment score (weighted: 60% company + 40% macro)';
+-- daily_data columns
+COMMENT ON COLUMN daily_data.sentiment_score IS 'Combined sentiment (weighted: 60% company + 40% macro)';
 COMMENT ON COLUMN daily_data.company_sentiment IS 'Sentiment from NVIDIA-specific news (-100 to +100)';
 COMMENT ON COLUMN daily_data.macro_sentiment IS 'Sentiment from macro/market news (-100 to +100)';
+COMMENT ON COLUMN daily_data.sentiment_range IS 'Descriptive label for sentiment level';
 COMMENT ON COLUMN daily_data.next_day_open IS 'Actual next day opening price for gap calculation';
-COMMENT ON COLUMN daily_data.price_change_percent IS 'Opening gap percentage: (next_day_open - current_close) / current_close * 100';
-COMMENT ON COLUMN daily_data.gravity_score IS 'Informational gravity score for truth confrontation system';
-COMMENT ON COLUMN daily_data.gravity_accuracy IS 'Accuracy of gravity prediction vs actual market movement';
-COMMENT ON COLUMN daily_data.gravity_grade IS 'Letter grade (A-F) for gravity prediction performance';
+COMMENT ON COLUMN daily_data.price_change_percent IS 'Opening gap %: (next_day_open - current_close) / current_close * 100';
+COMMENT ON COLUMN daily_data.gravity_score IS 'Informational gravity score from hybrid analysis';
+COMMENT ON COLUMN daily_data.gravity_accuracy IS 'Accuracy of gravity prediction vs actual movement (0-100%)';
+COMMENT ON COLUMN daily_data.gravity_grade IS 'Letter grade for gravity accuracy (A+ through F)';
+COMMENT ON COLUMN daily_data.prediction IS 'ML prediction value (1.0 = UP, -1.0 = DOWN)';
+COMMENT ON COLUMN daily_data.entropy IS 'Market entropy/uncertainty level';
 
-COMMENT ON COLUMN articles.article_type IS 'Type of article: company (NVIDIA-specific) or macro (market/economy-wide)';
+-- articles columns
+COMMENT ON COLUMN articles.article_type IS 'company = NVIDIA-specific news, macro = market/economy-wide news';
+COMMENT ON COLUMN articles.gravitational_mass IS 'Calculated gravitational mass for informational gravity model';

@@ -141,11 +141,17 @@ class PredictionAgent(BaseAgent):
             }
         
         logger.info(f"📊 Analyzing gravitational field for: {current_data.get('date', 'latest')}")
-        logger.info(f"  Price: ${float(current_data.get('close_price', 0)):.2f}")
-        logger.info(f"  Sentiment Field: {float(current_data.get('sentiment_score', 0)):.2f}")
+        
+# Safely handle potential None values from database and convert Decimals to float
+        close_price = float(current_data.get('close_price') or 0)
+        sentiment_score = float(current_data.get('sentiment_score') or 0)
+        rsi = float(current_data.get('rsi') or 50)
+
+        logger.info(f"  Price: ${close_price:.2f}")
+        logger.info(f"  Sentiment Field: {sentiment_score:.2f}")
         logger.info(f"  Probability Range: {current_data.get('sentiment_range', 'N/A')}")
         logger.info(f"  Entropy Level: {current_data.get('entropy', 'N/A')}")
-        logger.info(f"  Technical Momentum (RSI): {float(current_data.get('rsi', 0)):.2f}")
+        logger.info(f"  Technical Momentum (RSI): {rsi:.2f}")
         
         # Get average volume for gravitational context
         avg_volume = self.db.get_average_volume(days=20)
@@ -246,10 +252,11 @@ class PredictionAgent(BaseAgent):
             return base_prediction
         
         # Extract technical indicators for inertia calculation
-        rsi = float(current_data.get('rsi', 50))
-        moving_avg_50 = float(current_data.get('moving_avg_50', 0))
-        current_price = float(current_data.get('close_price', 0))
-        sentiment_score = float(current_data.get('sentiment_score', 0))
+        # Technical Analysis with null safety and type conversion
+        rsi = float(current_data.get('rsi') or 50)
+        moving_avg_50 = float(current_data.get('moving_avg_50') or 0)
+        current_price = float(current_data.get('close_price') or 0)
+        sentiment_score = float(current_data.get('sentiment_score') or 0)
         
         # Get sentiment physics data
         entropy = current_data.get('entropy', 'Medium')

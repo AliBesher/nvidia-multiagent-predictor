@@ -16,6 +16,9 @@ pandas-ta==0.3.14b0
 # API & HTTP
 requests==2.31.0
 
+# Telegram Bot Integration
+python-telegram-bot==20.7
+
 # News Scraping & Content Extraction
 trafilatura>=1.6.0
 newspaper3k>=0.2.8

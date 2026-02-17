@@ -588,7 +588,7 @@ class DatabaseManager:
     
     def update_gravity_accuracy(self, date: str, gravity_accuracy: float) -> bool:
         """
-        Update gravity accuracy for a specific date
+        Update gravity accuracy and grade for a specific date
         
         Args:
             date: Date in YYYY-MM-DD format
@@ -598,16 +598,20 @@ class DatabaseManager:
             True if successful, False otherwise
         """
         try:
+            from utils.analysis_utils import get_accuracy_grade
+            gravity_grade = get_accuracy_grade(gravity_accuracy)
+            
             conn = self.get_connection()
             cursor = conn.cursor()
             
             query = """
                 UPDATE daily_data 
                 SET gravity_accuracy = %s,
+                    gravity_grade = %s,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE date = %s
             """
-            cursor.execute(query, (gravity_accuracy, date))
+            cursor.execute(query, (gravity_accuracy, gravity_grade, date))
             
             if cursor.rowcount == 0:
                 logger.warning(f"No rows updated - date {date} not found in daily_data")
@@ -617,7 +621,7 @@ class DatabaseManager:
             cursor.close()
             conn.close()
             
-            logger.info(f"Updated gravity accuracy for {date}: {gravity_accuracy}%")
+            logger.info(f"Updated gravity accuracy for {date}: {gravity_accuracy}% (Grade: {gravity_grade})")
             return True
             
         except Exception as e:
@@ -1102,6 +1106,40 @@ class DatabaseManager:
             
         except Exception as e:
             logger.error(f"Error saving prediction: {str(e)}")
+            return False
+    
+    def save_hybrid_prediction(self, date: str, gravity_score: float, confidence: str = None) -> bool:
+        """
+        Save hybrid prediction (gravity score) to the database
+        
+        Args:
+            date: Date of prediction
+            gravity_score: Final gravity score from hybrid analysis
+            confidence: Confidence level (optional)
+        
+        Returns:
+            True if successful
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            query = """
+                UPDATE daily_data 
+                SET gravity_score = %s
+                WHERE date = %s
+            """
+            cursor.execute(query, (gravity_score, date))
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            logger.info(f"Saved hybrid prediction for {date}: gravity_score={gravity_score:+.2f}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error saving hybrid prediction: {str(e)}")
             return False
     
     def get_predictions_with_results(self, days: int = 30) -> List[Dict]:

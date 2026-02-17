@@ -120,6 +120,55 @@ def main():
         logger.info("="*60)
 
 
+def run_post_market_calibration():
+    """Run post-market gravity accuracy calibration
+    
+    Compares previous gravity predictions against actual market results
+    and calculates accuracy + grade for each.
+    """
+    from data.database_manager import DatabaseManager
+    from utils.analysis_utils import calculate_gravity_accuracy, get_accuracy_grade
+    
+    logger.info("="*60)
+    logger.info("POST-MARKET GRAVITY CALIBRATION")
+    logger.info("="*60)
+    
+    db = DatabaseManager()
+    
+    # Get predictions that need calibration
+    predictions = db.get_predictions_for_accuracy_calculation(limit=30)
+    
+    if not predictions:
+        logger.info("No predictions need calibration (all up to date)")
+        return 0
+    
+    logger.info(f"Found {len(predictions)} predictions to calibrate")
+    calibrated = 0
+    
+    for pred in predictions:
+        date = str(pred['date'])
+        sentiment_score = float(pred['sentiment_score'])
+        price_change = float(pred['price_change_percent'])
+        
+        # Calculate accuracy
+        accuracy = calculate_gravity_accuracy(sentiment_score, price_change)
+        grade = get_accuracy_grade(accuracy)
+        
+        # Save to database (update_gravity_accuracy now saves both accuracy and grade)
+        success = db.update_gravity_accuracy(date, accuracy)
+        
+        if success:
+            calibrated += 1
+            logger.info(f"  {date}: Accuracy={accuracy:.1f}% Grade={grade} "
+                       f"(predicted={sentiment_score:+.1f}, actual={price_change:+.2f}%)")
+        else:
+            logger.error(f"  {date}: Failed to update")
+    
+    logger.info(f"\nCalibrated {calibrated}/{len(predictions)} predictions")
+    logger.info("="*60)
+    return 0
+
+
 def print_system_info():
     """Print system configuration information"""
     config = get_config_info()

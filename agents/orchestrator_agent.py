@@ -142,9 +142,9 @@ class OrchestratorAgent(BaseAgent):
                     self._update_sentiment_simple(last_trading_day, sentiment_result)
             
             # Step 6: Calculate Hybrid Signal with Dynamic Strategy Weights
-            hybrid_result = self._calculate_hybrid_prediction(sentiment_result, last_trading_day)
-            result["hybrid_prediction"] = hybrid_result.get("signal_type")
-            result["hybrid_confidence"] = hybrid_result.get("confidence") 
+            hybrid_result = self._calculate_hybrid_prediction(sentiment_result, last_trading_day, dry_run)
+            result["hybrid_prediction"] = hybrid_result.get("recommendation")  # Use recommendation as signal type
+            result["hybrid_confidence"] = hybrid_result.get("hybrid_confidence") 
             result["hybrid_final_gravity"] = hybrid_result.get("final_gravity")
             result["strategy_weights"] = hybrid_result.get("strategy_weights")
             
@@ -597,13 +597,14 @@ class OrchestratorAgent(BaseAgent):
         
         return success
     
-    def _calculate_hybrid_prediction(self, sentiment_result: Dict, date: str) -> Dict:
+    def _calculate_hybrid_prediction(self, sentiment_result: Dict, date: str, dry_run: bool = False) -> Dict:
         """
         Calculate hybrid prediction using StrategyAgent for dynamic weights
         
         Args:
             sentiment_result: Results from sentiment analysis
             date: Date for prediction
+            dry_run: If True, don't save to database
             
         Returns:
             Hybrid prediction result dictionary
@@ -626,11 +627,21 @@ class OrchestratorAgent(BaseAgent):
             # Calculate hybrid signal with dynamic weights
             hybrid_result = self.calculate_hybrid_signal(date, info_gravity, news_summary)
             
+            # Save hybrid prediction to database (if not dry_run)
+            if not dry_run:
+                final_gravity = hybrid_result.get('final_gravity', 0.0)
+                confidence = hybrid_result.get('hybrid_confidence', 'Low')
+                success = self.db.save_hybrid_prediction(date, final_gravity, confidence)
+                if success:
+                    logger.info(f"✓ Hybrid prediction saved to database")
+                else:
+                    logger.warning(f"Failed to save hybrid prediction to database")
+            
             logger.info(f"✓ Hybrid prediction complete:")
-            logger.info(f"  Signal: {hybrid_result.get('signal_type', 'N/A')}")
-            logger.info(f"  Direction: {hybrid_result.get('signal_direction', 'N/A')}")
+            logger.info(f"  Signal: {hybrid_result.get('recommendation', 'N/A')}")
+            logger.info(f"  Direction: {hybrid_result.get('signal_alignment', 'N/A')}")
             logger.info(f"  Final Gravity: {hybrid_result.get('final_gravity', 0.0):+.2f}")
-            logger.info(f"  Confidence: {hybrid_result.get('confidence', 'N/A')}")
+            logger.info(f"  Confidence: {hybrid_result.get('hybrid_confidence', 'N/A')}")
             
             weights = hybrid_result.get('strategy_weights', {})
             logger.info(f"  Dynamic Weights: S{weights.get('sentiment', 0.6):.0%}/T{weights.get('technical', 0.4):.0%}")
