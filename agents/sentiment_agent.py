@@ -10,6 +10,7 @@ import pytz
 import json
 from agents.base_agent import BaseAgent
 from config.settings import SENTIMENT_SCALE
+from config.trusted_sources import get_source_tier
 from utils.logger import setup_logger
 import re
 
@@ -58,6 +59,16 @@ MAXIMUM point_score range: -10 to +10 (ABSOLUTE LIMIT)
 - Previous scores like +72 are "Emotional Noise" and INVALID
 - Scores beyond ±10 = Overenthusiastic analysis = NORMALIZE DOWN
 - Most routine news should score ±1 to ±3
+
+📰 PRICED-IN DETECTION — MANDATORY NEUTRAL FILTER:
+If the article contains language like:
+- "Beat estimates but...", "Strong results despite...", "Revenue grew however..."
+- "In line with expectations", "As expected", "Already anticipated"
+- "Analysts had predicted", "Market consensus was", "Priced in"
+→ The market has ALREADY absorbed this news. Score MUST be near 0 (±1 max).
+- "Beat earnings by 2%" = Marginal beat = Priced in = 0 to +1
+- "Beat earnings by 20%" = Genuine surprise = +5 to +8
+- "Strong results despite macro headwinds" = Hedged language = Market uncertain = +1 max
 
 ⚔️ MACRO vs. NVDA CONFLICT RESOLUTION:
 When Macro is negative but NVDA news is positive:
@@ -172,6 +183,9 @@ Return ONLY the JSON array, no additional text.
         # Apply the Golden Constant: 65% Company, 35% Macro
         combined_score = (company_sentiment * 0.65) + (macro_sentiment * 0.35)
         
+        # 📏 FINAL NORMALIZATION: Ensure combined score stays in [-10, +10]
+        combined_score = max(-10.0, min(10.0, combined_score))
+        
         logger.info(f"⚡ GOLDEN CALIBRATION: Company {company_sentiment:.2f} (65%) + Macro {macro_sentiment:.2f} (35%) = Combined {combined_score:.2f}")
         
         # Calculate confidence
@@ -180,6 +194,11 @@ Return ONLY the JSON array, no additional text.
         # Extract key factors
         company_factors = self._extract_key_factors(company_results)
         macro_factors = self._extract_key_factors(macro_results)
+        
+        # Aggregate sentiment_range and entropy from individual articles
+        combined_range, combined_entropy = self._aggregate_range_and_entropy(all_results)
+        
+        logger.info(f"📏 Combined Range: {combined_range} | Entropy: {combined_entropy}")
         
         return {
             "company_sentiment": company_sentiment,
@@ -191,8 +210,71 @@ Return ONLY the JSON array, no additional text.
             "company_factors": company_factors,
             "macro_factors": macro_factors,
             "article_count": {"company": len(company_results), "macro": len(macro_results)},
-            "individual_results": all_results  # Include individual article analysis results
+            "individual_results": all_results,
+            "combined_range": combined_range,
+            "combined_entropy": combined_entropy
         }
+    
+    def _aggregate_range_and_entropy(self, results: List[Dict]) -> tuple:
+        """
+        Aggregate sentiment_range and entropy from individual article results.
+        
+        Takes the min of all mins and max of all maxs to get the combined range,
+        then averages entropy values and converts to Low/Medium/High.
+        
+        Args:
+            results: List of individual article analysis results
+            
+        Returns:
+            Tuple of (combined_range_string, entropy_level)
+        """
+        if not results:
+            return "0 to 0", "Low"
+        
+        all_mins = []
+        all_maxs = []
+        all_entropy = []
+        
+        for r in results:
+            # Extract sentiment_range (could be dict {min, max} or missing)
+            sr = r.get('sentiment_range', {})
+            if isinstance(sr, dict):
+                if 'min' in sr and 'max' in sr:
+                    try:
+                        all_mins.append(float(sr['min']))
+                        all_maxs.append(float(sr['max']))
+                    except (ValueError, TypeError):
+                        pass
+            
+            # Extract entropy (float 0-1)
+            ent = r.get('entropy', None)
+            if ent is not None:
+                try:
+                    all_entropy.append(float(ent))
+                except (ValueError, TypeError):
+                    pass
+        
+        # Build combined range string
+        if all_mins and all_maxs:
+            range_min = min(all_mins)
+            range_max = max(all_maxs)
+            combined_range = f"{range_min:+.1f} to {range_max:+.1f}"
+        else:
+            combined_range = "0 to 0"
+        
+        # Calculate average entropy and convert to level
+        if all_entropy:
+            avg_entropy = sum(all_entropy) / len(all_entropy)
+            if avg_entropy >= 0.6:
+                entropy_level = "High"
+            elif avg_entropy >= 0.3:
+                entropy_level = "Medium"
+            else:
+                entropy_level = "Low"
+        else:
+            entropy_level = "Low"
+        
+        return combined_range, entropy_level
         
     def analyze_all_news_optimized(self, articles: List[Dict], prediction_date: str) -> List[Dict]:
         """
@@ -573,11 +655,12 @@ Content Length: {len(combined_content)} chars (Full Content: {'YES' if article.g
                         temporal_result['company_weight'] = 0.5
                         temporal_result['dynamic_weighting'] = False
                         
-                    # Add temporal metadata
+                    # Add temporal metadata + source for tier-weighted scoring
                     temporal_result['news_age_hours'] = article.get('news_age_hours', 24)
                     temporal_result['decay_factor'] = decay_factor
                     temporal_result['is_post_market'] = article.get('is_post_market', False)
                     temporal_result['gap_force_potential'] = article.get('gap_force_potential', False)
+                    temporal_result['source'] = article.get('source', '')
                     
                     temporal_results.append(temporal_result)
                     
@@ -635,51 +718,68 @@ Content Length: {len(combined_content)} chars (Full Content: {'YES' if article.g
     
     def _calculate_weighted_score(self, results: List[Dict], article_type: str) -> float:
         """
-        Calculate weighted sentiment score with Golden Calibration factors
+        Calculate tier-weighted average sentiment score.
+        
+        Uses source tier weights instead of raw summation to prevent Volume Bias.
+        Includes Black Swan Protection: articles with score < -8 get doubled weight.
+        Final result is clamped to [-10, +10] for parity with Technical Score.
+        
+        Tier Weights:
+            Tier 1 (Bloomberg, Reuters, etc.): 1.5
+            Tier 2 (Seeking Alpha, CNBC, etc.): 1.0
+            Tier 3 / Unknown: 0.7
         
         Args:
             results: List of sentiment analysis results
             article_type: 'company' or 'macro'
             
         Returns:
-            Weighted sentiment score
+            Weighted average sentiment score, clamped to [-10, +10]
         """
         if not results:
             return 0.0
         
-        weighted_scores = []
+        # Tier weight mapping
+        TIER_WEIGHTS = {1: 1.5, 2: 1.0, 3: 0.7, 0: 0.5}
+        
+        weighted_sum = 0.0
+        total_weight = 0.0
         
         for result in results:
             base_score = result.get('point_score', 0.0)
-            gravitational_mass = result.get('gravitational_mass', 5.0)
+            source = result.get('source', '') or ''
             
-            if article_type == 'company':
-                # 🚀 Company articles get 1.5x multiplication factor
-                weighted_score = base_score * 1.5
-                logger.debug(f"Company article: {base_score:.2f} → {weighted_score:.2f} (1.5x boost)")
-            else:
-                # 📰 Macro articles get 0.7x reduction factor
-                weighted_score = base_score * 0.7
-                
-                # 🎯 Macro Noise Filtering: Reduce weak signals by 50%
-                if -0.2 <= base_score <= 0.2:
-                    # Low-signal macro news gets additional 50% mass reduction
-                    gravitational_mass *= 0.5
-                    logger.debug(f"Macro noise filtering: {base_score:.2f} in [-0.2, +0.2] → Mass reduced by 50%")
-                
-                logger.debug(f"Macro article: {base_score:.2f} → {weighted_score:.2f} (0.7x reduction)")
+            # Get tier weight from trusted_sources config
+            tier = get_source_tier(source)
+            tier_weight = TIER_WEIGHTS.get(tier, 0.7)
             
-            # Weight by gravitational mass
-            final_weighted_score = weighted_score * gravitational_mass
-            weighted_scores.append(final_weighted_score)
+            # 🎯 Macro Noise Filtering: Reduce weak macro signals
+            if article_type == 'macro' and -0.2 <= base_score <= 0.2:
+                tier_weight *= 0.5
+                logger.debug(f"Macro noise filtering: {base_score:.2f} in [-0.2, +0.2] → Weight halved")
+            
+            # 🦢 BLACK SWAN PROTECTION: Double weight for catastrophic news (score < -8)
+            if base_score < -8:
+                tier_weight *= 2.0
+                logger.info(f"🦢 Black Swan detected: score={base_score:.1f}, source={source} → Weight doubled to {tier_weight:.1f}")
+            
+            weighted_sum += base_score * tier_weight
+            total_weight += tier_weight
+            
+            logger.debug(f"{article_type.capitalize()} article [{source}] Tier {tier}: score={base_score:.2f} × weight={tier_weight:.1f}")
         
-        # Calculate mass-weighted average
-        total_mass = sum(result.get('gravitational_mass', 5.0) for result in results)
-        if total_mass == 0:
+        if total_weight == 0:
             return 0.0
-            
-        weighted_average = sum(weighted_scores) / len(weighted_scores)
-        return weighted_average
+        
+        # Weighted average (NOT sum!) — prevents Volume Bias
+        weighted_avg = weighted_sum / total_weight
+        
+        # 📏 NORMALIZATION: Clamp to [-10, +10] to match Technical Score range
+        clamped = max(-10.0, min(10.0, weighted_avg))
+        
+        logger.info(f"📊 {article_type.capitalize()} Score: avg={weighted_avg:.2f} → clamped={clamped:.2f} (from {len(results)} articles, total_weight={total_weight:.1f})")
+        
+        return clamped
     
     def _calculate_average_score(self, results: List[Dict]) -> float:
         """Legacy method - kept for backward compatibility"""

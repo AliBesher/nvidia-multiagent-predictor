@@ -616,10 +616,11 @@ class OrchestratorAgent(BaseAgent):
             info_gravity = sentiment_result.get('combined_score', 0.0)
             
             # Prepare news summary for strategy agent
+            article_count = sentiment_result.get('article_count', {})
             news_summary = {
                 'final_sentiment': info_gravity,
-                'company_count': sentiment_result.get('company_article_count', 0),
-                'macro_count': sentiment_result.get('macro_article_count', 0),
+                'company_count': article_count.get('company', 0),
+                'macro_count': article_count.get('macro', 0),
                 'company_sentiment': sentiment_result.get('company_sentiment', 0.0),
                 'macro_sentiment': sentiment_result.get('macro_sentiment', 0.0)
             }
