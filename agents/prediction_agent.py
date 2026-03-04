@@ -9,7 +9,7 @@ from typing import Dict, Optional, List
 from datetime import datetime
 
 from agents.base_agent import BaseAgent
-from models.prediction_model import PredictionModel, MIN_TRAINING_SAMPLES, IDEAL_TRAINING_SAMPLES
+from models.prediction_model import PredictionModel, OpeningPredictionModel, MIN_TRAINING_SAMPLES, IDEAL_TRAINING_SAMPLES
 from data.database_manager import DatabaseManager
 from utils.logger import setup_logger
 
@@ -30,11 +30,14 @@ class PredictionAgent(BaseAgent):
     def __init__(self):
         super().__init__(agent_name="PredictionAgent")
         self.model = PredictionModel()
+        self.opening_model = OpeningPredictionModel()
         self.db = DatabaseManager()
         
         logger.info(f"PredictionAgent initialized")
-        logger.info(f"  Model trained: {self.model.is_trained}")
-        logger.info(f"  Training samples: {self.model.training_samples}")
+        logger.info(f"  Close Model trained: {self.model.is_trained}")
+        logger.info(f"  Close Training samples: {self.model.training_samples}")
+        logger.info(f"  Opening Model trained: {self.opening_model.is_trained}")
+        logger.info(f"  Opening Training samples: {self.opening_model.training_samples}")
     
     def train_model(self, force: bool = False) -> Dict:
         """
@@ -451,8 +454,142 @@ class PredictionAgent(BaseAgent):
         
         return max(min(final_confidence, 0.95), 0.15)  # Clamp between 15% and 95%
     
+    def train_opening_model(self, force: bool = False) -> Dict:
+        """
+        Train the opening prediction model with all available data
+        
+        Args:
+            force: If True, retrain even if model exists
+        
+        Returns:
+            Training result dictionary
+        """
+        logger.info("="*60)
+        logger.info("  Training Opening Prediction Model")
+        logger.info("="*60)
+        
+        all_data = self.db.get_all_daily_data()
+        
+        if not all_data:
+            return {
+                'success': False,
+                'message': "No data available for opening model training"
+            }
+        
+        data_count = len(all_data)
+        logger.info(f"Available data: {data_count} days")
+        
+        if data_count < MIN_TRAINING_SAMPLES:
+            logger.warning(f"⚠️  Insufficient data for opening model training")
+            logger.warning(f"   Have: {data_count} days")
+            logger.warning(f"   Need: {MIN_TRAINING_SAMPLES} days minimum")
+            return {
+                'success': False,
+                'message': f"Need {MIN_TRAINING_SAMPLES} days of data (have {data_count})",
+                'data_count': data_count,
+                'required': MIN_TRAINING_SAMPLES
+            }
+        
+        if self.opening_model.is_trained and not force:
+            logger.info(f"Opening model already trained ({self.opening_model.training_samples} samples)")
+            return {
+                'success': True,
+                'message': "Opening model already trained",
+                'samples': self.opening_model.training_samples,
+                'accuracy': self.opening_model.accuracy
+            }
+        
+        result = self.opening_model.train(all_data)
+        
+        if result['success']:
+            logger.info(f"✓ Opening model trained successfully")
+            logger.info(f"  Samples: {result['samples']}")
+            logger.info(f"  Accuracy: {result['accuracy']:.1%}")
+        else:
+            logger.error(f"✗ Opening model training failed: {result['message']}")
+        
+        return result
+    
+    def predict_next_day_opening(self, date: Optional[str] = None) -> Dict:
+        """
+        Predict next day's opening direction (GAP UP or GAP DOWN)
+        
+        Args:
+            date: Date to predict for (default: latest in database)
+        
+        Returns:
+            Opening prediction result dictionary
+        """
+        logger.info("-"*60)
+        logger.info("🌅 GENERATING OPENING PREDICTION")
+        logger.info("-"*60)
+        
+        # Check if model is trained
+        if not self.opening_model.is_trained:
+            logger.warning("Opening model not trained - attempting to train first")
+            train_result = self.train_opening_model()
+            if not train_result['success']:
+                return {
+                    'success': False,
+                    'prediction': None,
+                    'message': f"Cannot predict opening - {train_result['message']}"
+                }
+        
+        # Get the latest data for prediction
+        if date:
+            current_data = self.db.get_daily_data(date)
+        else:
+            current_data = self.db.get_latest_daily_data()
+        
+        if not current_data:
+            return {
+                'success': False,
+                'prediction': None,
+                'message': "No data available for opening prediction"
+            }
+        
+        logger.info(f"📊 Analyzing opening gap for: {current_data.get('date', 'latest')}")
+        
+        close_price = float(current_data.get('close_price') or 0)
+        sentiment_score = float(current_data.get('sentiment_score') or 0)
+        
+        logger.info(f"  Close Price: ${close_price:.2f}")
+        logger.info(f"  Sentiment: {sentiment_score:.2f}")
+        
+        # Get average volume
+        avg_volume = self.db.get_average_volume(days=20)
+        current_data['avg_volume'] = avg_volume
+        
+        # Generate opening prediction
+        prediction = self.opening_model.predict(current_data)
+        
+        if prediction['can_predict']:
+            logger.info(f"\n🌅 OPENING PREDICTION: {prediction['prediction']}")
+            logger.info(f"   Confidence: {prediction['confidence']:.1%}")
+            logger.info(f"   Gap Up probability: {prediction['probability_up']:.1%}")
+            logger.info(f"   Gap Down probability: {prediction['probability_down']:.1%}")
+            
+            # Save opening prediction to database
+            self.db.save_opening_prediction(
+                date=str(current_data.get('date', datetime.now().strftime('%Y-%m-%d'))),
+                prediction=prediction['prediction'],
+                confidence=prediction['confidence']
+            )
+        else:
+            logger.warning(f"Cannot generate opening prediction: {prediction['message']}")
+        
+        return {
+            'success': prediction['can_predict'],
+            'date': str(current_data.get('date', '')),
+            'prediction': prediction['prediction'],
+            'confidence': prediction['confidence'],
+            'probability_up': prediction['probability_up'],
+            'probability_down': prediction['probability_down'],
+            'message': prediction['message']
+        }
+    
     def get_model_status(self) -> Dict:
-        """Get current model status"""
+        """Get current model status (both close and opening models)"""
         status = self.model.get_status()
         
         # Add database info
@@ -465,6 +602,10 @@ class PredictionAgent(BaseAgent):
             status['progress'] = f"{data_count}/{IDEAL_TRAINING_SAMPLES} days ({data_count/IDEAL_TRAINING_SAMPLES*100:.0f}%)"
         else:
             status['progress'] = f"{data_count} days (ready for production)"
+        
+        # Add opening model status
+        opening_status = self.opening_model.get_status()
+        status['opening_model'] = opening_status
         
         return status
     

@@ -52,6 +52,7 @@ CREATE TABLE daily_data (
     -- ML Prediction
     prediction NUMERIC(10,2),            -- ML model prediction value (1.0 = UP, -1.0 = DOWN)
     prediction_accuracy NUMERIC(6,2),    -- Accuracy of prediction vs actual result
+    opening_prediction NUMERIC(10,2),    -- ML opening prediction (1.0 = GAP UP, -1.0 = GAP DOWN)
 
     -- Information Theory
     entropy VARCHAR(20),                 -- Market entropy/uncertainty level

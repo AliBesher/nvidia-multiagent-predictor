@@ -1108,6 +1108,43 @@ class DatabaseManager:
             logger.error(f"Error saving prediction: {str(e)}")
             return False
     
+    def save_opening_prediction(self, date: str, prediction: str, confidence: float) -> bool:
+        """
+        Save an opening prediction (GAP UP/GAP DOWN) to the database
+        
+        Args:
+            date: Date of prediction
+            prediction: 'GAP UP' or 'GAP DOWN'
+            confidence: Confidence level (0-1)
+        
+        Returns:
+            True if successful
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Convert to numeric: 1 = GAP UP, -1 = GAP DOWN
+            pred_value = 1 if 'UP' in prediction else -1
+            
+            query = """
+                UPDATE daily_data 
+                SET opening_prediction = %s
+                WHERE date = %s
+            """
+            cursor.execute(query, (pred_value, date))
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            logger.info(f"Saved opening prediction for {date}: {prediction} ({confidence:.1%})")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error saving opening prediction: {str(e)}")
+            return False
+    
     def save_hybrid_prediction(self, date: str, gravity_score: float, confidence: str = None) -> bool:
         """
         Save hybrid prediction (gravity score) to the database
@@ -1142,6 +1179,112 @@ class DatabaseManager:
             logger.error(f"Error saving hybrid prediction: {str(e)}")
             return False
     
+    def backfill_next_day_results(self) -> Dict[str, Any]:
+        """
+        Smart Temporal Integrity Patch — Backfill missing next_day_open / next_day_close.
+        
+        For each row in daily_data where either value is NULL:
+          1. Find the FIRST valid trading day after that row's date (T+1)
+          2. Fetch T+1 Open and Close from yfinance
+          3. Update next_day_open, next_day_close, and price_change_percent
+        
+        Returns:
+            Dict with counts: filled, skipped, errors
+        """
+        from data.market_data_fetcher import MarketDataFetcher
+
+        stats = {"filled": 0, "skipped": 0, "errors": 0, "details": []}
+
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            # Step 1 — Detect gaps
+            cursor.execute("""
+                SELECT date, close_price, next_day_open, next_day_close
+                FROM daily_data
+                WHERE next_day_open IS NULL OR next_day_close IS NULL
+                ORDER BY date
+            """)
+            gap_rows = cursor.fetchall()
+            cursor.close()
+            conn.close()
+
+            if not gap_rows:
+                logger.info("✅ Backfill: No gaps found — all next_day fields are populated")
+                return stats
+
+            logger.info(f"🔍 Backfill: Found {len(gap_rows)} rows with missing next_day data")
+
+            # Step 2 — Initialize fetcher once
+            fetcher = MarketDataFetcher()
+
+            for row in gap_rows:
+                row_date = str(row['date'])
+                close_price = float(row['close_price'])
+                existing_open = row['next_day_open']
+                existing_close = row['next_day_close']
+
+                try:
+                    # Step 3 — Find T+1 trading day
+                    next_trading_day = fetcher.get_next_trading_session(row_date)
+                    if not next_trading_day:
+                        logger.warning(f"⚠️  Backfill: Could not find next trading session for {row_date}")
+                        stats["skipped"] += 1
+                        continue
+
+                    # Step 4 — Fetch T+1 market data
+                    t1_data = fetcher.fetch_daily_data(next_trading_day)
+                    if not t1_data:
+                        logger.warning(f"⚠️  Backfill: No market data for T+1 ({next_trading_day}) after {row_date}")
+                        stats["skipped"] += 1
+                        continue
+
+                    t1_open = t1_data['open_price']
+                    t1_close = t1_data['close_price']
+
+                    # Use existing values if only one side is missing
+                    final_open = t1_open if existing_open is None else float(existing_open)
+                    final_close = t1_close if existing_close is None else float(existing_close)
+
+                    # Calculate price_change_percent (close-to-close)
+                    price_change_pct = ((final_close - close_price) / close_price) * 100
+
+                    # Step 5 — Precision update
+                    conn = self.get_connection()
+                    cur = conn.cursor()
+                    cur.execute("""
+                        UPDATE daily_data
+                        SET next_day_open = %s,
+                            next_day_close = %s,
+                            price_change_percent = %s,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE date = %s
+                    """, (final_open, final_close, round(price_change_pct, 4), row_date))
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+
+                    stats["filled"] += 1
+                    detail = (f"✅ {row_date} → T+1={next_trading_day}  "
+                              f"Open=${final_open:.2f}  Close=${final_close:.2f}  "
+                              f"Δ={price_change_pct:+.2f}%")
+                    stats["details"].append(detail)
+                    logger.info(detail)
+
+                except Exception as inner_e:
+                    logger.error(f"❌ Backfill error for {row_date}: {str(inner_e)}")
+                    stats["errors"] += 1
+
+            logger.info(f"📊 Backfill complete — Filled: {stats['filled']}, "
+                        f"Skipped: {stats['skipped']}, Errors: {stats['errors']}")
+            return stats
+
+        except Exception as e:
+            logger.error(f"❌ Backfill fatal error: {str(e)}")
+            stats["errors"] += 1
+            return stats
+
     def get_predictions_with_results(self, days: int = 30) -> List[Dict]:
         """
         Get predictions that have actual results for evaluation

@@ -155,11 +155,37 @@ class OrchestratorAgent(BaseAgent):
             result["can_predict"] = prediction_result.get("can_predict", False)
             result["prediction_message"] = prediction_result.get("message", "")
             
+            # Step 8: Make ML Opening prediction (GAP UP/DOWN)
+            opening_result = self._make_opening_prediction()
+            result["opening_prediction"] = opening_result.get("prediction")
+            result["opening_confidence"] = opening_result.get("confidence", 0.0)
+            result["can_predict_opening"] = opening_result.get("can_predict", False)
+            result["opening_message"] = opening_result.get("message", "")
+            
             result["success"] = True
             logger.info(f"\n{'='*60}")
             logger.info(f"✓ Workflow completed successfully")
             logger.info(f"  Market data: {last_trading_day}")
             logger.info(f"  News collected: {ny_today}")
+            
+            # ── FINAL 3-RESULT SUMMARY ──
+            logger.info(f"\n{'─'*60}")
+            logger.info(f"📋 PREDICTION SUMMARY (3 Models)")
+            logger.info(f"{'─'*60}")
+            
+            hg = result.get('hybrid_final_gravity', 0.0)
+            logger.info(f"  🔬 Hybrid Gravity:   {hg:+.2f} → {result.get('hybrid_prediction', 'N/A')}")
+            
+            if result.get('can_predict'):
+                logger.info(f"  🎯 ML Close:         {result['prediction']} ({result['prediction_confidence']:.1%})")
+            else:
+                logger.info(f"  🎯 ML Close:         Not ready")
+            
+            if result.get('can_predict_opening'):
+                logger.info(f"  🌅 ML Opening:       {result['opening_prediction']} ({result['opening_confidence']:.1%})")
+            else:
+                logger.info(f"  🌅 ML Opening:       Not ready")
+            
             logger.info(f"{'='*60}")
             
         except Exception as e:
@@ -716,6 +742,69 @@ class OrchestratorAgent(BaseAgent):
         return {
             'can_predict': prediction['success'],
             'prediction': prediction['prediction'],
+            'confidence': prediction.get('confidence', 0.0),
+            'probability_up': prediction.get('probability_up', 0.0),
+            'probability_down': prediction.get('probability_down', 0.0),
+            'message': prediction['message']
+        }
+    
+    def _make_opening_prediction(self) -> Dict:
+        """
+        Make opening prediction for next trading day using ML model
+        Predicts GAP UP or GAP DOWN (next_day_open vs close_price)
+        
+        Returns:
+            Opening prediction result dictionary
+        """
+        logger.info("\n🌅 STEP 8: Making Opening Prediction")
+        logger.info("-" * 60)
+        
+        # Check model status
+        status = self.prediction_agent.get_model_status()
+        opening_status = status.get('opening_model', {})
+        
+        if not status.get('can_train', False):
+            data_count = status['database_records']
+            min_required = status['min_required']
+            days_needed = min_required - data_count
+            
+            logger.warning(f"⚠️  Cannot predict opening - not enough data")
+            logger.warning(f"   Have: {data_count} days")
+            logger.warning(f"   Need: {min_required} days minimum")
+            
+            return {
+                'can_predict': False,
+                'prediction': None,
+                'confidence': 0.0,
+                'message': f"Not enough data ({data_count}/{min_required} days)"
+            }
+        
+        # Train opening model if needed
+        if not opening_status.get('is_trained', False):
+            logger.info("Training opening prediction model...")
+            train_result = self.prediction_agent.train_opening_model()
+            if not train_result['success']:
+                return {
+                    'can_predict': False,
+                    'prediction': None,
+                    'confidence': 0.0,
+                    'message': f"Opening training failed: {train_result['message']}"
+                }
+        
+        # Make opening prediction
+        prediction = self.prediction_agent.predict_next_day_opening()
+        
+        if prediction['success']:
+            logger.info(f"✓ Opening Prediction: {prediction['prediction']}")
+            logger.info(f"  Confidence: {prediction['confidence']:.1%}")
+            logger.info(f"  Gap Up probability: {prediction.get('probability_up', 0):.1%}")
+            logger.info(f"  Gap Down probability: {prediction.get('probability_down', 0):.1%}")
+        else:
+            logger.warning(f"Opening prediction failed: {prediction['message']}")
+        
+        return {
+            'can_predict': prediction['success'],
+            'prediction': prediction.get('prediction'),
             'confidence': prediction.get('confidence', 0.0),
             'probability_up': prediction.get('probability_up', 0.0),
             'probability_down': prediction.get('probability_down', 0.0),

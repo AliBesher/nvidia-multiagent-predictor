@@ -186,6 +186,8 @@ def parse_results(output):
             l = line.strip()
             if "HYBRID PREDICTION" in l:
                 last_section = 'hybrid'
+            elif "ML OPENING PREDICTION" in l:
+                last_section = 'opening'
             elif "ML PREDICTION" in l and "VALIDATION" in l:
                 last_section = 'ml'
             elif l.startswith("Articles:"):
@@ -200,6 +202,8 @@ def parse_results(output):
                 data['macro_sent'] = l.split(":", 1)[1].strip()
             elif l.startswith("Trading Day:"):
                 data['date'] = l.split(":", 1)[1].strip()
+            elif "OPENING PREDICTION:" in l and "ML PREDICTION:" not in l:
+                data['opening_pred'] = l.split("OPENING PREDICTION:", 1)[1].strip()
             elif "ML PREDICTION:" in l and "VALIDATION" not in l:
                 data['ml_pred'] = l.split("ML PREDICTION:", 1)[1].strip()
             elif "HYBRID SIGNAL:" in l:
@@ -210,6 +214,8 @@ def parse_results(output):
                     data['hybrid_conf'] = conf
                 elif last_section == 'ml' and 'ml_conf' not in data:
                     data['ml_conf'] = conf
+                elif last_section == 'opening' and 'opening_conf' not in data:
+                    data['opening_conf'] = conf
 
         articles = data.get('articles', '?')
         cls = data.get('classification', '')
@@ -218,12 +224,21 @@ def parse_results(output):
         ml_conf = data.get('ml_conf', 'N/A')
         hybrid = data.get('hybrid_pred', 'N/A')
         hybrid_conf = data.get('hybrid_conf', 'N/A')
+        opening = data.get('opening_pred', 'N/A')
+        opening_conf = data.get('opening_conf', 'N/A')
 
         msg = (
-            f"Articles: {articles} ({cls})\n"
-            f"Date: {date}\n"
-            f"LLM: {ml} | Confidence: {ml_conf}\n"
-            f"Hybrid: {hybrid} | Confidence: {hybrid_conf}"
+            f"📅 Date: {date}\n"
+            f"📰 Articles: {articles} ({cls})\n"
+            f"\n"
+            f"🔬 Hybrid: {hybrid}\n"
+            f"   Confidence: {hybrid_conf}\n"
+            f"\n"
+            f"🎯 ML Close: {ml}\n"
+            f"   Confidence: {ml_conf}\n"
+            f"\n"
+            f"🌅 ML Opening: {opening}\n"
+            f"   Confidence: {opening_conf}"
         )
         return msg
     except Exception as e:

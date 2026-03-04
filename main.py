@@ -67,6 +67,18 @@ def main():
         validate_config()
         logger.info("✓ Configuration valid")
         
+        # ── Smart Temporal Integrity Patch ──
+        # Backfill any missing next_day_open / next_day_close before workflow
+        from data.database_manager import DatabaseManager
+        logger.info("\n🔧 Running next-day backfill check...")
+        _db = DatabaseManager()
+        backfill_stats = _db.backfill_next_day_results()
+        if backfill_stats["filled"] > 0:
+            logger.info(f"✓ Backfilled {backfill_stats['filled']} rows")
+        else:
+            logger.info("✓ No gaps — temporal integrity OK")
+        del _db
+        
         # Initialize orchestrator
         logger.info("\nInitializing orchestrator...")
         orchestrator = OrchestratorAgent()
@@ -258,6 +270,26 @@ def print_workflow_results(result: dict):
         message = result.get('prediction_message', 'Not available')
         print(f"\n  ⚠️  ML prediction not ready")
         print(f"  Reason: {message}")
+    
+    # Opening ML prediction
+    print(f"\n" + "-"*60)
+    print("ML OPENING PREDICTION (GAP UP/DOWN)")
+    print("-"*60)
+    
+    if result.get('can_predict_opening'):
+        opening_pred = result.get('opening_prediction', 'N/A')
+        opening_conf = result.get('opening_confidence', 0)
+        
+        if 'UP' in str(opening_pred):
+            print(f"\n  🌅📈 OPENING PREDICTION: {opening_pred}")
+        else:
+            print(f"\n  🌅📉 OPENING PREDICTION: {opening_pred}")
+        
+        print(f"  Confidence: {opening_conf:.1%}")
+    else:
+        opening_msg = result.get('opening_message', 'Not available')
+        print(f"\n  ⚠️  Opening prediction not ready")
+        print(f"  Reason: {opening_msg}")
     
     if result.get('errors'):
         print(f"\nErrors:")
