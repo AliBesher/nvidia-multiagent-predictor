@@ -54,7 +54,7 @@ TIMEZONE = os.getenv("TIMEZONE", "America/New_York")
 # ============================================
 # NEWS SEARCH SETTINGS
 # ============================================
-MAX_NEWS_ARTICLES = 3  # Number of articles to analyze daily
+MAX_NEWS_ARTICLES = 8  # Number of articles to analyze daily (was 3 — too few for reliable sentiment)
 NEWS_SEARCH_DAYS_BACK = 1  # Search news from last N days
 NEWS_RELEVANCE_THRESHOLD = 0.7  # Minimum relevance score (0-1)
 

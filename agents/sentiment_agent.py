@@ -369,10 +369,18 @@ Return ONLY the JSON array, no additional text.
             news_age_hours = self._calculate_news_age_utc(article, ny_now_utc)
             temporal_article['news_age_hours'] = news_age_hours
             
-            # Apply decay factor - fresh news should stay strong
-            decay_factor = 1.0
-            if news_age_hours > 12:  # Decay after 12 hours
-                decay_factor = 0.7  # 30% decay for older news
+            # Apply decay factor - graduated decay based on news age
+            # Fresh news has full impact, older news decays progressively
+            if news_age_hours <= 6:
+                decay_factor = 1.0      # 0-6h:  Full impact (fresh news)
+            elif news_age_hours <= 12:
+                decay_factor = 0.85     # 6-12h: Slight decay
+            elif news_age_hours <= 24:
+                decay_factor = 0.65     # 12-24h: Moderate decay
+            elif news_age_hours <= 48:
+                decay_factor = 0.35     # 24-48h: Heavy decay (weekend staleness)
+            else:
+                decay_factor = 0.15     # 48h+:  Minimal residual impact
                 
             temporal_article['decay_factor'] = decay_factor
             
@@ -590,7 +598,6 @@ Article {i} (ID: {article.get('id', f'article_{i}')}):
 Title: {title}
 Content: {content_preview}
 Source: {article.get('source', 'Unknown')}
-Age: {news_age:.1f} hours (Decay: {decay_factor:.1f}x)
 Type: {article_type.upper()}
 Post-Market: {'YES - Gap Force Potential' if is_post_market else 'NO'}
 Content Length: {len(combined_content)} chars (Full Content: {'YES' if article.get('full_content') else 'NO'})
@@ -643,6 +650,16 @@ Content Length: {len(combined_content)} chars (Full Content: {'YES' if article.g
                     original_mass = result.get('gravitational_mass', 5.0)
                     decayed_mass = original_mass * decay_factor
                     temporal_result['gravitational_mass'] = decayed_mass
+                    
+                    # 🕐 TEMPORAL DECAY: Apply decay mathematically to point_score
+                    # GPT evaluates content objectively → code applies time-based decay
+                    original_score = result.get('point_score', 0.0)
+                    decayed_score = original_score * decay_factor
+                    temporal_result['point_score'] = round(decayed_score, 2)
+                    temporal_result['original_score'] = original_score  # Keep original for logging
+                    
+                    if decay_factor < 1.0:
+                        logger.info(f"🕐 Decay applied: score {original_score:.2f} × {decay_factor:.2f} = {decayed_score:.2f} (age: {article.get('news_age_hours', 0):.1f}h)")
                     
                     # Apply dynamic macro weighting if mass >= 9
                     is_macro = self._is_macro_article(article)

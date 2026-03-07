@@ -7,6 +7,8 @@ Operates strictly on New York Time (EST/EDT) for financial accuracy
 import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
+import math
+import numpy as np
 from datetime import datetime, timedelta
 import pytz
 from typing import Dict, Optional
@@ -225,6 +227,14 @@ class MarketDataFetcher:
                 "macd_signal": round(float(row['MACD_signal']), 4) if pd.notna(row['MACD_signal']) else None,
                 "moving_avg_50": round(float(row['SMA_50']), 2) if pd.notna(row['SMA_50']) else None,
                 "moving_avg_200": round(float(row['SMA_200']), 2) if pd.notna(row['SMA_200']) else None,
+                # New indicators
+                "bollinger_upper": round(float(row['BB_upper']), 2) if 'BB_upper' in row and pd.notna(row['BB_upper']) else None,
+                "bollinger_lower": round(float(row['BB_lower']), 2) if 'BB_lower' in row and pd.notna(row['BB_lower']) else None,
+                "bollinger_width": round(float(row['BB_width']), 2) if 'BB_width' in row and pd.notna(row['BB_width']) else None,
+                "bollinger_pctb": round(float(row['BB_pctB']), 4) if 'BB_pctB' in row and pd.notna(row['BB_pctB']) else None,
+                "atr": round(float(row['ATR']), 2) if 'ATR' in row and pd.notna(row['ATR']) else None,
+                "atr_percent": round(float(row['ATR_pct']), 2) if 'ATR_pct' in row and pd.notna(row['ATR_pct']) else None,
+                "volume_ratio": round(float(row['Volume_Ratio']), 2) if 'Volume_Ratio' in row and pd.notna(row['Volume_Ratio']) else None,
             }
             
             logger.info(f"Successfully fetched data for {date}: Close=${data['close_price']}, Volume={data['volume']:,}")
@@ -258,6 +268,33 @@ class MarketDataFetcher:
             # Simple Moving Averages
             df['SMA_50'] = ta.sma(df['Close'], length=MA_SHORT)
             df['SMA_200'] = ta.sma(df['Close'], length=MA_LONG)
+            
+            # Bollinger Bands (20-period, 2 std dev)
+            bbands = ta.bbands(df['Close'], length=20, std=2)
+            if bbands is not None:
+                # Find actual column names (varies by pandas_ta version)
+                bb_cols = bbands.columns.tolist()
+                bb_upper_col = [c for c in bb_cols if c.startswith('BBU')][0]
+                bb_mid_col = [c for c in bb_cols if c.startswith('BBM')][0]
+                bb_lower_col = [c for c in bb_cols if c.startswith('BBL')][0]
+                df['BB_upper'] = bbands[bb_upper_col]
+                df['BB_middle'] = bbands[bb_mid_col]
+                df['BB_lower'] = bbands[bb_lower_col]
+                # BB Width: measures volatility (wider = more volatile)
+                df['BB_width'] = ((df['BB_upper'] - df['BB_lower']) / df['BB_middle']) * 100
+                # BB %B: where price sits within bands (0=lower, 1=upper, >1=above upper)
+                df['BB_pctB'] = (df['Close'] - df['BB_lower']) / (df['BB_upper'] - df['BB_lower'])
+            
+            # ATR - Average True Range (14-period) — measures volatility
+            atr_result = ta.atr(df['High'], df['Low'], df['Close'], length=14)
+            if atr_result is not None:
+                df['ATR'] = atr_result
+                # ATR as percentage of price (normalized for comparability)
+                df['ATR_pct'] = (df['ATR'] / df['Close']) * 100
+            
+            # Volume Spike Detection: current volume vs 20-day average
+            df['Volume_SMA_20'] = ta.sma(df['Volume'], length=20)
+            df['Volume_Ratio'] = df['Volume'] / df['Volume_SMA_20']
             
             logger.debug(f"Calculated technical indicators for {len(df)} days")
             return df
@@ -529,8 +566,19 @@ class MarketDataFetcher:
             # Calculate distance from moving averages
             ma_distance = self._calculate_ma_distance(row)
             
-            # Calculate technical score (-10 to +10)
-            technical_score = self._calculate_technical_score(row, momentum_3d, ma_distance)
+            # Extract new indicator values
+            bb_pctb = float(row['BB_pctB']) if 'BB_pctB' in row and pd.notna(row['BB_pctB']) else 0.5
+            bb_width = float(row['BB_width']) if 'BB_width' in row and pd.notna(row['BB_width']) else 0.0
+            atr_pct = float(row['ATR_pct']) if 'ATR_pct' in row and pd.notna(row['ATR_pct']) else 0.0
+            volume_ratio = float(row['Volume_Ratio']) if 'Volume_Ratio' in row and pd.notna(row['Volume_Ratio']) else 1.0
+            
+            # Calculate technical score (-10 to +10) — Non-Linear Physics-Based Engine
+            score_result = self._calculate_technical_score(
+                row, momentum_3d, ma_distance, bb_pctb, bb_width, atr_pct, volume_ratio
+            )
+            technical_score = score_result['technical_score']
+            confidence_level = score_result['confidence_level']
+            score_breakdown = score_result['contribution_breakdown']
             
             technical_data = {
                 "date": date,
@@ -540,12 +588,22 @@ class MarketDataFetcher:
                 "ma_50_distance": round(ma_distance['ma50_dist'], 2),
                 "ma_200_distance": round(ma_distance['ma200_dist'], 2),
                 "technical_score": round(technical_score, 2),
+                "confidence_level": round(confidence_level, 1),
+                "score_breakdown": score_breakdown,
                 "rsi_pressure": self._get_rsi_pressure(row['RSI']),
                 "momentum_direction": "UP" if momentum_3d > 0 else "DOWN",
-                "ma_position": ma_distance['position']
+                "ma_position": ma_distance['position'],
+                # New indicators for Strategy Agent
+                "bollinger_pctb": round(bb_pctb, 4),
+                "bollinger_width": round(bb_width, 2),
+                "bollinger_position": "ABOVE_UPPER" if bb_pctb > 1.0 else "NEAR_UPPER" if bb_pctb > 0.8 else "MIDDLE" if bb_pctb > 0.2 else "NEAR_LOWER" if bb_pctb > 0.0 else "BELOW_LOWER",
+                "atr_percent": round(atr_pct, 2),
+                "volatility_level": "HIGH" if atr_pct > 3.0 else "MODERATE" if atr_pct > 1.5 else "LOW",
+                "volume_ratio": round(volume_ratio, 2),
+                "volume_signal": "SPIKE" if volume_ratio > 2.0 else "HIGH" if volume_ratio > 1.5 else "NORMAL" if volume_ratio > 0.7 else "DRY"
             }
             
-            logger.info(f"Technical Analysis for {date}: Score={technical_score:+.2f}, RSI={technical_data['rsi']}, Momentum={momentum_3d:+.2f}%")
+            logger.info(f"Technical Analysis for {date}: Score={technical_score:+.2f} (Confidence={confidence_level:.0f}%), RSI={technical_data['rsi']}, Momentum={momentum_3d:+.2f}%, BB%B={bb_pctb:.2f}, ATR%={atr_pct:.1f}%, Vol={volume_ratio:.1f}x")
             return technical_data
             
         except Exception as e:
@@ -649,65 +707,205 @@ class MarketDataFetcher:
         else:
             return "neutral"
     
-    def _calculate_technical_score(self, row: pd.Series, momentum: float, ma_distance: Dict) -> float:
+    def _calculate_technical_score(self, row: pd.Series, momentum: float, ma_distance: Dict,
+                                    bb_pctb: float = 0.5, bb_width: float = 0.0,
+                                    atr_pct: float = 0.0, volume_ratio: float = 1.0) -> Dict:
         """
-        Calculate comprehensive technical score (-10 to +10)
+        Non-Linear Physics-Based Technical Score Engine
         
-        Args:
-            row: Price and indicator data
-            momentum: 3-day momentum percentage
-            ma_distance: Moving average distance data
-            
+        Instead of simple linear addition, uses:
+          1. Volume as a Force Multiplier on Momentum (not additive)
+          2. Smooth exponential RSI penalties (no hard thresholds)
+          3. Bollinger + Volume context-aware breakout/reversion logic
+          4. Logarithmic MA convergence (diminishing returns when overextended)
+          5. Tanh normalization to squash into [-10, +10]
+          6. ATR as Confidence metadata (not directional)
+        
         Returns:
-            Technical score from -10 to +10
+            Dict with 'technical_score' (-10 to +10), 'confidence_level' (0-100),
+            and 'contribution_breakdown' dict
         """
-        score = 0.0
-        
         try:
-            # RSI Component (-3 to +3)
+            # ================================================================
+            # 1. MOMENTUM × VOLUME FORCE (Non-Linear Interaction)
+            # ================================================================
+            # Base momentum with quadratic boost for breakouts
+            abs_mom = abs(momentum)
+            if abs_mom > 4.0:
+                # Quadratic boost: breakout force accelerates
+                boosted_mom = 4.0 + (abs_mom - 4.0) ** 1.5 * 0.5
+                base_mom = math.copysign(boosted_mom, momentum)
+            else:
+                base_mom = momentum
+            
+            # Volume as force multiplier: sqrt(volume_ratio)
+            # vol_ratio=1.0 → multiplier=1.0 (neutral)
+            # vol_ratio=2.0 → multiplier=1.41 (amplify)
+            # vol_ratio=0.5 → multiplier=0.71 (dampen)
+            vol_multiplier = math.sqrt(max(volume_ratio, 0.1))
+            
+            # Momentum × Volume Force
+            momentum_force = base_mom * vol_multiplier * 0.6  # Weight factor
+            
+            # ================================================================
+            # 2. RSI SMOOTH PENALTY (Exponential, no hard thresholds)
+            # ================================================================
+            rsi_score = 0.0
             if pd.notna(row['RSI']):
                 rsi = float(row['RSI'])
-                if rsi > 70:
-                    # Overbought - negative pressure
-                    score -= min(3.0, (rsi - 70) / 10)  # -3 at RSI 100
-                elif rsi < 30:
-                    # Oversold - positive pressure  
-                    score += min(3.0, (30 - rsi) / 10)  # +3 at RSI 0
+                # Center around 50, apply smooth exponential penalty
+                # For NVIDIA: use 75/25 thresholds (high-volatility stock)
+                if rsi > 50:
+                    # Overbought penalty: grows exponentially past 75
+                    overshoot = max(0, rsi - 75)
+                    rsi_score = -(overshoot ** 1.8) / 200  # Smooth exponential
+                    # Mild positive for 50-65 range (healthy bullish momentum)
+                    if rsi < 65:
+                        rsi_score = (rsi - 50) * 0.02  # Slight positive
+                elif rsi < 50:
+                    # Oversold bounce: grows exponentially below 25
+                    undershoot = max(0, 25 - rsi)
+                    rsi_score = (undershoot ** 1.8) / 200  # Smooth exponential
+                    # Mild negative for 35-50 range (weakening)
+                    if rsi > 35:
+                        rsi_score = -(50 - rsi) * 0.02
             
-            # Momentum Component (-4 to +4)
-            momentum_score = min(4.0, max(-4.0, momentum / 2.5))  # Cap at ±10% momentum
-            score += momentum_score
+            # ================================================================
+            # 3. BOLLINGER BANDS — Context-Aware (Volume interaction)
+            # ================================================================
+            bb_score = 0.0
             
-            # Moving Average Component (-3 to +3)
+            if bb_pctb > 1.0:
+                # Price ABOVE upper band
+                if volume_ratio > 1.3:
+                    # High volume + above band = TREND CONTINUATION (Bullish)
+                    bb_score = min(2.0, (bb_pctb - 1.0) * 3.0)
+                else:
+                    # Low volume + above band = REVERSION RISK (Bearish)
+                    bb_score = -min(1.5, (bb_pctb - 1.0) * 4.0)
+            elif bb_pctb < 0.0:
+                # Price BELOW lower band
+                if volume_ratio > 1.3:
+                    # High volume + below band = PANIC SELLING (more downside)
+                    bb_score = -min(2.0, abs(bb_pctb) * 3.0)
+                else:
+                    # Low volume + below band = BOUNCE CANDIDATE (Bullish)
+                    bb_score = min(1.5, abs(bb_pctb) * 4.0)
+            else:
+                # Inside bands: mild mean reversion toward 0.5
+                # Closer to edges = mild signal
+                if bb_pctb > 0.75:
+                    bb_score = -0.3 * (bb_pctb - 0.75) / 0.25
+                elif bb_pctb < 0.25:
+                    bb_score = 0.3 * (0.25 - bb_pctb) / 0.25
+            
+            # ================================================================
+            # 4. MOVING AVERAGE CONVERGENCE (Logarithmic Scaling)
+            # ================================================================
             ma_score = 0.0
-            
-            # 50-day MA influence
             ma50_dist = ma_distance['ma50_dist']
-            if abs(ma50_dist) < 5:  # Within 5% of MA50
-                ma_score += ma50_dist / 2.5  # ±2 max
-            else:
-                ma_score += 2.0 if ma50_dist > 0 else -2.0
-            
-            # 200-day MA influence (smaller weight)
             ma200_dist = ma_distance['ma200_dist']
-            if ma200_dist > 0:
-                ma_score += min(1.0, ma200_dist / 10)  # +1 max for being above MA200
+            
+            # Logarithmic: good returns near MA, diminishing when overextended
+            # sign(dist) × ln(1 + |dist|) — capped at ~2.5
+            if abs(ma50_dist) > 0.1:
+                log_ma50 = math.copysign(
+                    math.log1p(abs(ma50_dist)) * 0.8,  # log(1+|x|) × weight
+                    ma50_dist
+                )
+                # Gravitational pull: penalize extreme extension
+                if abs(ma50_dist) > 8:
+                    pull = (abs(ma50_dist) - 8) * 0.1
+                    log_ma50 -= math.copysign(pull, ma50_dist)
+                ma_score += min(2.0, max(-2.0, log_ma50))
+            
+            if abs(ma200_dist) > 0.1:
+                log_ma200 = math.copysign(
+                    math.log1p(abs(ma200_dist)) * 0.3,  # Lower weight for MA200
+                    ma200_dist
+                )
+                ma_score += min(0.8, max(-0.8, log_ma200))
+            
+            ma_score = min(2.5, max(-2.5, ma_score))
+            
+            # ================================================================
+            # 5. TANH NORMALIZATION → [-10, +10]
+            # ================================================================
+            # Sum all raw components
+            total_raw = momentum_force + rsi_score + bb_score + ma_score
+            
+            # Scaling factor k: controls sensitivity
+            # k=0.15 means raw_score of ±7 maps to about ±7.5 final
+            # k=0.20 means faster saturation (hits ±9 sooner)
+            k = 0.18
+            
+            final_score = 10.0 * math.tanh(k * total_raw)
+            
+            # ================================================================
+            # 6. CONFIDENCE LEVEL (ATR-based, 0-100%)
+            # ================================================================
+            # Base confidence from ATR (noise level)
+            if atr_pct > 4.0:
+                # Extreme volatility → low confidence
+                base_confidence = 30.0
+            elif atr_pct > 3.0:
+                # High volatility
+                base_confidence = 50.0
+            elif atr_pct > 1.5:
+                # Moderate volatility → decent confidence
+                base_confidence = 70.0
             else:
-                ma_score -= min(1.0, abs(ma200_dist) / 10)  # -1 max for being below MA200
+                # Low volatility
+                base_confidence = 80.0
             
-            score += min(3.0, max(-3.0, ma_score))
+            # Squeeze boost: low ATR + narrow Bollinger = breakout imminent
+            if atr_pct < 1.5 and bb_width < 5.0:
+                base_confidence += 15.0  # High confidence in pending breakout
             
-            # Final bounds check
-            final_score = min(10.0, max(-10.0, score))
+            # Signal alignment boost: momentum agrees with Bollinger position
+            if (momentum > 0 and bb_pctb > 0.5) or (momentum < 0 and bb_pctb < 0.5):
+                base_confidence += 5.0
             
-            logger.debug(f"Technical Score Breakdown: RSI={rsi if pd.notna(row['RSI']) else 'N/A'}, " +
-                        f"Momentum={momentum:.1f}%, MA_Score={ma_score:.1f}, Final={final_score:.1f}")
+            # Volume confirmation boost
+            if volume_ratio > 1.5:
+                base_confidence += 5.0
+            elif volume_ratio < 0.5:
+                base_confidence -= 10.0  # Low volume = unreliable signal
             
-            return final_score
+            confidence_level = min(100.0, max(10.0, base_confidence))
+            
+            # ================================================================
+            # BUILD RESULT
+            # ================================================================
+            breakdown = {
+                'momentum_force': round(momentum_force, 3),
+                'rsi_penalty': round(rsi_score, 3),
+                'bollinger_signal': round(bb_score, 3),
+                'ma_convergence': round(ma_score, 3),
+                'total_raw': round(total_raw, 3),
+                'vol_multiplier': round(vol_multiplier, 3),
+                'k_factor': k,
+            }
+            
+            logger.debug(
+                f"Physics Score: Mom_Force={momentum_force:+.2f} (mom={momentum:+.1f}% × vol={vol_multiplier:.2f}), "
+                f"RSI={rsi_score:+.2f}, BB={bb_score:+.2f}, MA={ma_score:+.2f} "
+                f"→ Raw={total_raw:+.2f} → tanh → Final={final_score:+.2f} (Conf={confidence_level:.0f}%)"
+            )
+            
+            return {
+                'technical_score': final_score,
+                'confidence_level': confidence_level,
+                'contribution_breakdown': breakdown
+            }
             
         except Exception as e:
             logger.warning(f"Error calculating technical score: {str(e)}")
-            return 0.0
+            return {
+                'technical_score': 0.0,
+                'confidence_level': 50.0,
+                'contribution_breakdown': {}
+            }
 
 
 # ============================================

@@ -160,7 +160,7 @@ def run_post_market_calibration():
     for pred in predictions:
         date = str(pred['date'])
         sentiment_score = float(pred['sentiment_score'])
-        price_change = float(pred['price_change_percent'])
+        price_change = float(pred['opening_gap_percent'])
         
         # Calculate accuracy
         accuracy = calculate_gravity_accuracy(sentiment_score, price_change)

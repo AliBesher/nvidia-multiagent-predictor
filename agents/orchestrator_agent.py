@@ -992,7 +992,15 @@ class OrchestratorAgent(BaseAgent):
             tech_data = {
                 'rsi': rsi,
                 'momentum_3d': momentum_3d,
-                'tech_score': technical_score
+                'tech_score': technical_score,
+                # New indicators for enhanced strategy decisions
+                'bollinger_pctb': technical_data.get('bollinger_pctb', 0.5),
+                'bollinger_width': technical_data.get('bollinger_width', 0),
+                'bollinger_position': technical_data.get('bollinger_position', 'MIDDLE'),
+                'atr_percent': technical_data.get('atr_percent', 0),
+                'volatility_level': technical_data.get('volatility_level', 'MODERATE'),
+                'volume_ratio': technical_data.get('volume_ratio', 1.0),
+                'volume_signal': technical_data.get('volume_signal', 'NORMAL'),
             }
             
             # Get dynamic weights from StrategyAgent
@@ -1021,6 +1029,7 @@ class OrchestratorAgent(BaseAgent):
             logger.info(f"📊 HYBRID CALCULATION:")
             logger.info(f"  Info Gravity (Sentiment): {info_gravity:+.2f} × {sentiment_weight:.1%} = {info_gravity * sentiment_weight:+.2f}")
             logger.info(f"  Technical Score:          {technical_score:+.2f} × {technical_weight:.1%} = {technical_score * technical_weight:+.2f}")
+            logger.info(f"  Technical Confidence:     {technical_data.get('confidence_level', 0):.0f}%")
             logger.info(f"  Final Hybrid Gravity:     {final_gravity:+.2f}")
             logger.info(f"  Signal Alignment:         {signal_alignment['status']}")
             logger.info(f"  Confidence Level:         {signal_alignment['confidence']}")
@@ -1044,7 +1053,16 @@ class OrchestratorAgent(BaseAgent):
                 "recommendation": recommendation,
                 "rsi": technical_data.get('rsi'),
                 "momentum_3d": technical_data.get('momentum_3d'),
-                "ma_position": technical_data.get('ma_position')
+                "ma_position": technical_data.get('ma_position'),
+                "bollinger_position": technical_data.get('bollinger_position'),
+                "bollinger_pctb": technical_data.get('bollinger_pctb'),
+                "volume_ratio": technical_data.get('volume_ratio'),
+                "volume_signal": technical_data.get('volume_signal'),
+                "atr_percent": technical_data.get('atr_percent'),
+                "volatility_level": technical_data.get('volatility_level'),
+                # Physics-based scoring metadata
+                "technical_confidence": technical_data.get('confidence_level'),
+                "score_breakdown": technical_data.get('score_breakdown', {}),
             }
             
         except Exception as e:
@@ -1133,9 +1151,25 @@ class OrchestratorAgent(BaseAgent):
             breakdown += f"  Sentiment Weight: {weights['sentiment']:.1%} | Technical Weight: {weights['technical']:.1%}\n"
             breakdown += f"  Info Gravity: {technical_data.get('info_gravity', 0):+.2f} × {weights['sentiment']:.1%} = {technical_data.get('info_gravity', 0) * weights['sentiment']:+.2f}\n"
             breakdown += f"  Technical Score: {technical_data['technical_score']:+.2f} × {weights['technical']:.1%} = {technical_data['technical_score'] * weights['technical']:+.2f}\n"
+            # Physics-based confidence
+            conf = technical_data.get('confidence_level', 0)
+            breakdown += f"  Technical Confidence: {conf:.0f}%\n"
             breakdown += f"\n🧠 STRATEGY REGIME: {strategy['regime_analysis']}\n"
             breakdown += f"📈 TECHNICAL DETAILS: RSI {technical_data['rsi']} ({technical_data['rsi_pressure']}), "
-            breakdown += f"Momentum {technical_data['momentum_3d']:+.1f}% ({technical_data['momentum_direction']})"
+            breakdown += f"Momentum {technical_data['momentum_3d']:+.1f}% ({technical_data['momentum_direction']})\n"
+            # New indicators
+            bb_pos = technical_data.get('bollinger_position', 'N/A')
+            bb_pctb = technical_data.get('bollinger_pctb', 0)
+            vol_sig = technical_data.get('volume_signal', 'N/A')
+            vol_ratio = technical_data.get('volume_ratio', 1.0)
+            atr_pct = technical_data.get('atr_percent', 0)
+            vol_level = technical_data.get('volatility_level', 'N/A')
+            breakdown += f"  Bollinger: {bb_pos} (%B={bb_pctb:.2f}), Volume: {vol_ratio:.1f}x ({vol_sig}), ATR: {atr_pct:.1f}% ({vol_level})\n"
+            # Physics Score Breakdown
+            sb = technical_data.get('score_breakdown', {})
+            if sb:
+                breakdown += f"⚛️ PHYSICS BREAKDOWN: Mom_F={sb.get('momentum_force', 0):+.2f}, RSI_P={sb.get('rsi_penalty', 0):+.2f}, "
+                breakdown += f"BB_S={sb.get('bollinger_signal', 0):+.2f}, MA_C={sb.get('ma_convergence', 0):+.2f} → Raw={sb.get('total_raw', 0):+.2f}"
             return breakdown
         except Exception as e:
             return f"Dynamic breakdown error: {str(e)}"

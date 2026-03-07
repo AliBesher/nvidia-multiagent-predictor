@@ -25,7 +25,7 @@ class StrategyAgent(BaseAgent):
         
         Args:
             news_summary: Summary of news analysis including sentiment and article types
-            technical_data: Technical indicators including RSI, momentum, etc.
+            technical_data: Technical indicators including RSI, momentum, Bollinger, ATR, volume
         
         Returns:
             Dict containing regime analysis, weights, boundary check, and reasoning
@@ -41,10 +41,22 @@ class StrategyAgent(BaseAgent):
             momentum_3d = technical_data.get('momentum_3d', 0)
             tech_score = technical_data.get('tech_score', 0)
             
+            # New indicators
+            bb_pctb = technical_data.get('bollinger_pctb', 0.5)
+            bb_width = technical_data.get('bollinger_width', 0)
+            bb_position = technical_data.get('bollinger_position', 'MIDDLE')
+            atr_pct = technical_data.get('atr_percent', 0)
+            volatility_level = technical_data.get('volatility_level', 'MODERATE')
+            volume_ratio = technical_data.get('volume_ratio', 1.0)
+            volume_signal = technical_data.get('volume_signal', 'NORMAL')
+            
             # Apply LLM-based analysis with structured prompt
             analysis_prompt = self._build_strategy_prompt(
                 sentiment_score, company_articles, macro_articles, total_articles,
-                rsi, momentum_3d, tech_score
+                rsi, momentum_3d, tech_score,
+                bb_pctb, bb_width, bb_position,
+                atr_pct, volatility_level,
+                volume_ratio, volume_signal
             )
             
             response = self.llm.invoke(analysis_prompt)
@@ -64,9 +76,12 @@ class StrategyAgent(BaseAgent):
     
     def _build_strategy_prompt(self, sentiment_score: float, company_articles: int, 
                               macro_articles: int, total_articles: int,
-                              rsi: float, momentum_3d: float, tech_score: float) -> str:
+                              rsi: float, momentum_3d: float, tech_score: float,
+                              bb_pctb: float = 0.5, bb_width: float = 0.0, bb_position: str = 'MIDDLE',
+                              atr_pct: float = 0.0, volatility_level: str = 'MODERATE',
+                              volume_ratio: float = 1.0, volume_signal: str = 'NORMAL') -> str:
         """
-        Build structured prompt for weight determination
+        Build structured prompt for weight determination with full indicator suite
         """
         return f"""
 You are a Strategic Weight Allocation Agent. Analyze the market data and determine optimal weights for sentiment vs technical analysis within STRICT BOUNDARIES.
@@ -76,32 +91,42 @@ MARKET DATA:
 - Company Articles: {company_articles}
 - Macro Articles: {macro_articles}
 - Total Articles: {total_articles}
+
+TECHNICAL INDICATORS:
 - RSI: {rsi:.1f}
 - 3D Momentum: {momentum_3d:.2f}%
 - Technical Score: {tech_score:.2f}
+- Bollinger %B: {bb_pctb:.2f} (Position: {bb_position})
+- Bollinger Width: {bb_width:.1f}% (Volatility Level: {volatility_level})
+- ATR%: {atr_pct:.1f}%
+- Volume Ratio: {volume_ratio:.1f}x (Signal: {volume_signal})
 
 BOUNDARY RULES (MUST FOLLOW):
-1. sentiment_weight MUST be between 0.2 and 0.8 (never 100% news or 100% technical)
+1. sentiment_weight MUST be between 0.2 and 0.8
 2. sentiment_weight + technical_weight MUST equal 1.0
 3. Safety Margin: Always maintain at least 20% allocation to each side
 
-FOUNDATION RULES:
+WEIGHTING RULES:
 1. High-Mass Rule: Strong company-specific news (earnings, guidance) → sentiment_weight 0.7-0.8
 2. Technical Friction Rule: Extreme RSI (>75 or <25) → technical_weight ≥ 0.6
 3. Noise Rule: Low article count (<4) or weak sentiment → sentiment_weight 0.2-0.4
+4. Bollinger Extreme Rule: Price ABOVE upper band or BELOW lower band → increase technical_weight by 0.1
+5. Volume Spike Rule: Volume Ratio >2.0 → confirms the dominant signal direction; keep current bias
+6. High Volatility Rule: ATR% >3.0 → slightly favor technical (volatility needs discipline)
+7. Low Volatility Squeeze: ATR% <1.0 with narrow Bollinger width → balanced 0.5/0.5 (breakout uncertain)
 
 ANALYZE and determine weights based on these rules.
 
 Respond ONLY in this JSON format:
-{{
+{{{{
   "regime_analysis": "Brief description of market conditions",
-  "applied_weights": {{
+  "applied_weights": {{{{
       "sentiment": 0.XX,
       "technical": 0.XX
-  }},
+  }}}},
   "boundary_check": "Confirmation of rule compliance",
   "strategic_reasoning": "Why these specific weights were chosen"
-}}
+}}}}
 """
     
     def _parse_llm_response(self, response: str) -> Dict[str, Any]:

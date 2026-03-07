@@ -144,6 +144,13 @@ class DatabaseManager:
                         macd_signal = %s,
                         moving_avg_50 = %s,
                         moving_avg_200 = %s,
+                        bollinger_upper = %s,
+                        bollinger_lower = %s,
+                        bollinger_width = %s,
+                        bollinger_pctb = %s,
+                        atr = %s,
+                        atr_percent = %s,
+                        volume_ratio = %s,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE date = %s
                 """
@@ -158,6 +165,13 @@ class DatabaseManager:
                     data.get('macd_signal'),
                     data.get('moving_avg_50'),
                     data.get('moving_avg_200'),
+                    data.get('bollinger_upper'),
+                    data.get('bollinger_lower'),
+                    data.get('bollinger_width'),
+                    data.get('bollinger_pctb'),
+                    data.get('atr'),
+                    data.get('atr_percent'),
+                    data.get('volume_ratio'),
                     data['date']
                 ))
                 logger.info(f"Updated daily data for {data['date']}")
@@ -166,8 +180,10 @@ class DatabaseManager:
                 query = """
                     INSERT INTO daily_data (
                         date, open_price, close_price, high_price, low_price, volume,
-                        rsi, macd, macd_signal, moving_avg_50, moving_avg_200
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        rsi, macd, macd_signal, moving_avg_50, moving_avg_200,
+                        bollinger_upper, bollinger_lower, bollinger_width, bollinger_pctb,
+                        atr, atr_percent, volume_ratio
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 cursor.execute(query, (
                     data['date'],
@@ -180,7 +196,14 @@ class DatabaseManager:
                     data.get('macd'),
                     data.get('macd_signal'),
                     data.get('moving_avg_50'),
-                    data.get('moving_avg_200')
+                    data.get('moving_avg_200'),
+                    data.get('bollinger_upper'),
+                    data.get('bollinger_lower'),
+                    data.get('bollinger_width'),
+                    data.get('bollinger_pctb'),
+                    data.get('atr'),
+                    data.get('atr_percent'),
+                    data.get('volume_ratio')
                 ))
                 logger.info(f"Inserted daily data for {data['date']}")
             
@@ -217,7 +240,31 @@ class DatabaseManager:
                 logger.info("✅ Migration completed: full_content column added")
             else:
                 logger.info("✅ Database schema is up to date")
-                
+            
+            # Migration: Add new technical indicator columns to daily_data
+            new_columns = {
+                'bollinger_upper': 'NUMERIC(10,2)',
+                'bollinger_lower': 'NUMERIC(10,2)',
+                'bollinger_width': 'NUMERIC(6,2)',
+                'bollinger_pctb': 'NUMERIC(6,4)',
+                'atr': 'NUMERIC(10,2)',
+                'atr_percent': 'NUMERIC(6,2)',
+                'volume_ratio': 'NUMERIC(6,2)',
+                'opening_gap_percent': 'NUMERIC(6,2)',
+            }
+            
+            for col_name, col_type in new_columns.items():
+                check_sql = f"""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'daily_data' AND column_name = '{col_name}'
+                """
+                exists = self.execute_sql(check_sql)
+                if not exists:
+                    alter_sql = f"ALTER TABLE daily_data ADD COLUMN {col_name} {col_type}"
+                    self.execute_sql(alter_sql)
+                    logger.info(f"🔧 Migration: Added {col_name} ({col_type}) to daily_data")
+            
         except Exception as e:
             logger.warning(f"Migration warning: {str(e)}")
     
@@ -298,7 +345,7 @@ class DatabaseManager:
             query = """
                 UPDATE daily_data 
                 SET next_day_open = %s, 
-                    price_change_percent = %s,
+                    opening_gap_percent = %s,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE date = %s
             """
@@ -646,10 +693,10 @@ class DatabaseManager:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
             query = """
-                SELECT date, sentiment_score, price_change_percent, gravity_accuracy
+                SELECT date, sentiment_score, opening_gap_percent, gravity_accuracy
                 FROM daily_data 
                 WHERE sentiment_score IS NOT NULL 
-                    AND price_change_percent IS NOT NULL
+                    AND opening_gap_percent IS NOT NULL
                     AND gravity_accuracy IS NULL
                 ORDER BY date DESC
                 LIMIT %s

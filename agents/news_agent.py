@@ -160,6 +160,72 @@ class NewsAgent(BaseAgent):
             logger.error(f"Error searching macro news: {str(e)}")
             return []
     
+    def _parse_relative_date(self, relative_str: str) -> Optional[datetime]:
+        """
+        Convert Serper's relative date strings to actual datetime objects.
+        
+        Serper returns dates like: '4 hours ago', '1 day ago', '2 days ago',
+        '30 minutes ago', '1 week ago', 'Mar 5, 2026', etc.
+        
+        Returns:
+            datetime object with the estimated publish time, or None if unparseable
+        """
+        if not relative_str:
+            return None
+            
+        relative_str = relative_str.strip().lower()
+        now = datetime.now()
+        
+        try:
+            # Pattern: "X minutes ago"
+            if 'minute' in relative_str:
+                parts = relative_str.split()
+                minutes = int(parts[0])
+                return now - timedelta(minutes=minutes)
+            
+            # Pattern: "X hours ago"
+            elif 'hour' in relative_str:
+                parts = relative_str.split()
+                hours = int(parts[0])
+                return now - timedelta(hours=hours)
+            
+            # Pattern: "X days ago" or "1 day ago"
+            elif 'day' in relative_str:
+                parts = relative_str.split()
+                days = int(parts[0])
+                return now - timedelta(days=days)
+            
+            # Pattern: "X weeks ago" or "1 week ago"
+            elif 'week' in relative_str:
+                parts = relative_str.split()
+                weeks = int(parts[0])
+                return now - timedelta(weeks=weeks)
+            
+            # Pattern: "X months ago" (approximate)
+            elif 'month' in relative_str:
+                parts = relative_str.split()
+                months = int(parts[0])
+                return now - timedelta(days=months * 30)
+            
+            # Absolute date formats: "Mar 5, 2026" or "March 5, 2026"
+            else:
+                date_formats = [
+                    '%b %d, %Y',     # Mar 5, 2026
+                    '%B %d, %Y',     # March 5, 2026
+                    '%Y-%m-%d',      # 2026-03-05
+                    '%m/%d/%Y',      # 03/05/2026
+                ]
+                for fmt in date_formats:
+                    try:
+                        return datetime.strptime(relative_str, fmt)
+                    except ValueError:
+                        continue
+                        
+        except (ValueError, IndexError) as e:
+            logger.debug(f"Could not parse relative date '{relative_str}': {e}")
+        
+        return None
+    
     def _build_search_query(self, date: str) -> str:
         """
         Build optimized search query for NVIDIA news
@@ -285,6 +351,12 @@ class NewsAgent(BaseAgent):
                 logger.debug(f"Not NVIDIA-relevant: {title[:50]}")
                 continue
             
+            # 🕐 Parse actual publish time from Serper's relative date
+            raw_date = article.get('date', '')
+            published_time = self._parse_relative_date(raw_date)
+            if published_time:
+                logger.debug(f"Parsed publish time: '{raw_date}' → {published_time.strftime('%Y-%m-%d %H:%M')}")
+            
             # Build standardized article format
             filtered_article = {
                 'title': title,
@@ -292,6 +364,8 @@ class NewsAgent(BaseAgent):
                 'url': link,
                 'snippet': snippet,
                 'date': target_date,
+                'published_time': published_time,  # Actual publish datetime from Serper
+                'raw_publish_date': raw_date,       # Original string e.g. '4 hours ago'
                 'source_tier': get_company_source_tier(source),
                 'is_trusted': is_trusted_company_source(source),
                 'full_content': ''  # Will be populated by scraper
@@ -312,7 +386,7 @@ class NewsAgent(BaseAgent):
                 filtered_article['full_content'] = snippet
 
             filtered.append(filtered_article)
-            logger.debug(f"Added company article: {title[:50]}... from {source} (tier {get_company_source_tier(source)})")
+            logger.debug(f"Added company article: {title[:50]}... from {source} (tier {get_company_source_tier(source)}, published: {raw_date})")
         
         return filtered
     
@@ -357,6 +431,12 @@ class NewsAgent(BaseAgent):
                 logger.debug(f"Not macro-relevant: {title[:50]}")
                 continue
             
+            # 🕐 Parse actual publish time from Serper's relative date
+            raw_date = article.get('date', '')
+            published_time = self._parse_relative_date(raw_date)
+            if published_time:
+                logger.debug(f"Parsed publish time: '{raw_date}' → {published_time.strftime('%Y-%m-%d %H:%M')}")
+            
             # Build standardized article format
             filtered_article = {
                 'title': title,
@@ -364,6 +444,8 @@ class NewsAgent(BaseAgent):
                 'url': link,
                 'snippet': snippet,
                 'date': target_date,
+                'published_time': published_time,  # Actual publish datetime from Serper
+                'raw_publish_date': raw_date,       # Original string e.g. '4 hours ago'
                 'source_tier': get_macro_source_tier(source),
                 'is_trusted': is_trusted_macro_source(source),
                 'full_content': ''  # Will be populated by scraper
@@ -384,7 +466,7 @@ class NewsAgent(BaseAgent):
                 filtered_article['full_content'] = snippet
 
             filtered.append(filtered_article)
-            logger.debug(f"Added macro article: {title[:50]}... from {source} (tier {get_macro_source_tier(source)})")
+            logger.debug(f"Added macro article: {title[:50]}... from {source} (tier {get_macro_source_tier(source)}, published: {raw_date})")
         
         return filtered
     

@@ -32,6 +32,13 @@ CREATE TABLE daily_data (
     macd_signal NUMERIC(10,4),           -- MACD signal line
     moving_avg_50 NUMERIC(10,2),         -- 50-day moving average
     moving_avg_200 NUMERIC(10,2),        -- 200-day moving average
+    bollinger_upper NUMERIC(10,2),       -- Bollinger Band upper (20-period, 2 std)
+    bollinger_lower NUMERIC(10,2),       -- Bollinger Band lower
+    bollinger_width NUMERIC(6,2),        -- Bollinger Width % (volatility measure)
+    bollinger_pctb NUMERIC(6,4),         -- Bollinger %B (0=lower, 1=upper band)
+    atr NUMERIC(10,2),                   -- Average True Range (14-period)
+    atr_percent NUMERIC(6,2),            -- ATR as % of price
+    volume_ratio NUMERIC(6,2),           -- Volume / 20-day avg volume
 
     -- Sentiment Analysis (separated by type)
     sentiment_score NUMERIC(6,2),        -- Combined sentiment (weighted: 60% company + 40% macro)
@@ -42,7 +49,8 @@ CREATE TABLE daily_data (
     -- Next Day Results (for opening gap prediction)
     next_day_close NUMERIC(10,2),        -- Actual next day closing price
     next_day_open NUMERIC(10,2),         -- Actual next day opening price for gap calculation
-    price_change_percent NUMERIC(6,2),   -- Opening gap %: (next_day_open - current_close) / current_close * 100
+    price_change_percent NUMERIC(6,2),   -- Close-to-close %: (next_day_close - current_close) / current_close * 100
+    opening_gap_percent NUMERIC(6,2),    -- Opening gap %: (next_day_open - current_close) / current_close * 100
 
     -- Gravity System (Informational Gravity Model)
     gravity_score NUMERIC(6,2),          -- Gravity score from hybrid analysis (truth confrontation)
@@ -150,7 +158,8 @@ SELECT
     COUNT(CASE WHEN a.article_type = 'macro' THEN 1 END) as macro_articles,
     dd.next_day_close,
     dd.next_day_open,
-    dd.price_change_percent as opening_gap_percent,
+    dd.price_change_percent,
+    dd.opening_gap_percent,
     dd.prediction,
     dd.prediction_accuracy
 FROM daily_data dd
@@ -186,7 +195,8 @@ COMMENT ON COLUMN daily_data.company_sentiment IS 'Sentiment from NVIDIA-specifi
 COMMENT ON COLUMN daily_data.macro_sentiment IS 'Sentiment from macro/market news (-100 to +100)';
 COMMENT ON COLUMN daily_data.sentiment_range IS 'Descriptive label for sentiment level';
 COMMENT ON COLUMN daily_data.next_day_open IS 'Actual next day opening price for gap calculation';
-COMMENT ON COLUMN daily_data.price_change_percent IS 'Opening gap %: (next_day_open - current_close) / current_close * 100';
+COMMENT ON COLUMN daily_data.price_change_percent IS 'Close-to-close %: (next_day_close - current_close) / current_close * 100';
+COMMENT ON COLUMN daily_data.opening_gap_percent IS 'Opening gap %: (next_day_open - current_close) / current_close * 100';
 COMMENT ON COLUMN daily_data.gravity_score IS 'Informational gravity score from hybrid analysis';
 COMMENT ON COLUMN daily_data.gravity_accuracy IS 'Accuracy of gravity prediction vs actual movement (0-100%)';
 COMMENT ON COLUMN daily_data.gravity_grade IS 'Letter grade for gravity accuracy (A+ through F)';
