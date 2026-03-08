@@ -147,6 +147,8 @@ class OrchestratorAgent(BaseAgent):
             result["hybrid_confidence"] = hybrid_result.get("hybrid_confidence") 
             result["hybrid_final_gravity"] = hybrid_result.get("final_gravity")
             result["strategy_weights"] = hybrid_result.get("strategy_weights")
+            result["technical_score"] = hybrid_result.get("technical_score", 0.0)
+            result["info_gravity"] = hybrid_result.get("info_gravity", 0.0)
             
             # Step 7: Make ML prediction (if enough data) as additional validation
             prediction_result = self._make_prediction()

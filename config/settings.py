@@ -62,7 +62,7 @@ NEWS_RELEVANCE_THRESHOLD = 0.7  # Minimum relevance score (0-1)
 # GPT MODEL SETTINGS
 # ============================================
 GPT_MODEL = "gpt-4"
-GPT_TEMPERATURE = 0.7  # 0 = deterministic, 1 = creative
+GPT_TEMPERATURE = 0.45  # Lower = more consistent scoring (was 0.7)
 GPT_MAX_TOKENS = 1000
 
 # ============================================

@@ -208,6 +208,12 @@ def parse_results(output):
                 data['ml_pred'] = l.split("ML PREDICTION:", 1)[1].strip()
             elif "HYBRID SIGNAL:" in l:
                 data['hybrid_pred'] = l.split("HYBRID SIGNAL:", 1)[1].strip()
+            elif l.startswith("Technical Score:") and last_section == 'hybrid':
+                data['tech_score'] = l.split(":", 1)[1].strip()
+            elif l.startswith("Sentiment Score:") and last_section == 'hybrid':
+                data['sent_score'] = l.split(":", 1)[1].strip()
+            elif l.startswith("Strategy:") and last_section == 'hybrid':
+                data['strategy'] = l.split(":", 1)[1].strip()
             elif l.startswith("Confidence:"):
                 conf = l.split(":", 1)[1].strip()
                 if last_section == 'hybrid' and 'hybrid_conf' not in data:
@@ -226,6 +232,9 @@ def parse_results(output):
         hybrid_conf = data.get('hybrid_conf', 'N/A')
         opening = data.get('opening_pred', 'N/A')
         opening_conf = data.get('opening_conf', 'N/A')
+        tech_score = data.get('tech_score', 'N/A')
+        sent_score = data.get('sent_score', 'N/A')
+        strategy = data.get('strategy', 'N/A')
 
         msg = (
             f"📅 Date: {date}\n"
@@ -233,6 +242,10 @@ def parse_results(output):
             f"\n"
             f"🔬 Hybrid: {hybrid}\n"
             f"   Confidence: {hybrid_conf}\n"
+            f"\n"
+            f"📊 Technical Score: {tech_score}\n"
+            f"📰 Sentiment Score: {sent_score}\n"
+            f"⚖️ Weights: {strategy}\n"
             f"\n"
             f"🎯 ML Close: {ml}\n"
             f"   Confidence: {ml_conf}\n"
@@ -243,8 +256,6 @@ def parse_results(output):
         return msg
     except Exception as e:
         return f"Completed (parse error: {e})"
-    except Exception as e:
-        return f"⚠️ Completed (parse error: {e})"
 
 
 def main():

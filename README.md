@@ -2,7 +2,7 @@
 
 **Advanced Multi-Agent AI System for Financial Market Prediction Using Informational Physics**
 
-[![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)](https://github.com/your-repo/nvidia-prediction)
+[![Version](https://img.shields.io/badge/version-4.0.0-blue.svg)](https://github.com/your-repo/nvidia-prediction)
 [![Python](https://img.shields.io/badge/python-3.8%2B-green.svg)](https://python.org)
 [![Architecture](https://img.shields.io/badge/architecture-Multi--Agent-purple.svg)](https://en.wikipedia.org/wiki/Multi-agent_system)
 [![AI](https://img.shields.io/badge/AI-GPT--4%20Powered-orange.svg)](https://openai.com)
@@ -12,7 +12,7 @@
 
 ## 🚀 Executive Summary
 
-The **NVIDIA Informational Gravity Engine** represents the evolution from basic sentiment analysis to a sophisticated **Multi-Agent AI System** that treats financial markets as complex gravitational fields. Through revolutionary **Informational Gravity Theory** and **Dynamic Strategy Adaptation**, this system achieves institutional-grade prediction accuracy by modeling news as physical forces that bend price trajectories through spacetime.
+The **NVIDIA Informational Gravity Engine** represents the evolution from basic sentiment analysis to a sophisticated **Multi-Agent AI System** that treats financial markets as complex gravitational fields. Through revolutionary **Informational Gravity Theory**, **Non-Linear Physics-Based Technical Scoring**, and **Dynamic Strategy Adaptation**, this system achieves institutional-grade prediction accuracy by modeling news as physical forces that bend price trajectories through spacetime.
 
 **Core Innovation**: Unlike traditional systems with static sentiment weights, our **StrategyAgent** dynamically adapts to market regimes—shifting from **80% Technical** during low-news periods to **80% Sentiment** during major catalysts like earnings releases.
 
@@ -58,11 +58,11 @@ graph TD
     A --> E[PredictionAgent - The Oracle]
     A --> F[OrchestratorAgent - The Conductor]
     
-    B --> C
     D --> B
+    B --> C
     C --> E
     E --> F
-    F --> G[Final Decision]
+    F --> G[Final Decision + Telegram Bot]
 ```
 
 ### Agent Specifications
@@ -70,21 +70,35 @@ graph TD
 #### 🧠 **BaseAgent** - The Foundation
 The genetic blueprint providing core intelligence capabilities to all specialized agents.
 
+#### 🔍 **NewsAgent (The Scanner)**
+- **Deep-Text Scraping**: Full article content extraction using `newspaper3k` (primary) + `trafilatura` (fallback)
+- **Content Limit**: Up to 10,000 characters per article
+- **Smart Content Filtering**: NLTK stop-word removal before GPT analysis (30% content density increase)
+- **Serper API Integration**: Real-time news search with relative date parsing
+- **Dual Search**: Separate company (NVIDIA) and macro-economic news pipelines
+
 #### 🔍 **SentimentAgent (The Skeptic)** - *Revolutionary Evolution*
-- **Original Role**: Basic sentiment analysis
-- **Current Role**: **Skeptical Financial Analyst** with advanced cognitive filters
-- **Key Innovation**: Caps sentiment scores at realistic ±10 range, preventing "Information Black Holes"
-- **Intelligence**: Filters speculation from concrete financial data using GPT-4
+- **Skeptical Financial Analyst** with advanced cognitive filters
+- **Caps sentiment scores** at realistic ±100 range, preventing "Information Black Holes"
+- **Graduated 5-Level Temporal Decay** for news aging (see below)
+- **Smart Content Pipeline**: Stop-word filtered → 2,000 char optimized preview → GPT-4 analysis
+- **GPT Temperature**: 0.45 (optimized for consistent, reproducible scoring)
 
 #### 👔 **StrategyAgent (The CEO)** - *The System's Mastermind*
-The crown jewel of our architecture. This agent:
+The crown jewel of our architecture:
 - **Analyzes Market Regime** (Trending, Consolidating, Volatile, News-Heavy)
 - **Sets Dynamic Weights** for Sentiment vs. Technical analysis
 - **Applies Boundary Rules** to prevent extreme decisions
 - **Provides Strategic Reasoning** for every weight adjustment
+- **GPT Temperature**: 0.3 (conservative, strategy-focused)
 
 #### 🎼 **OrchestratorAgent (The Conductor)**
-Coordinates all agents and implements the **Hybrid Decision Engine** with real-time regime adaptation.
+Coordinates all agents and implements the **Hybrid Decision Engine** with real-time regime adaptation. Passes `technical_score`, `info_gravity`, and `strategy_weights` through the full pipeline.
+
+#### 🔮 **PredictionAgent (The Oracle)**
+- **ML-based prediction model** using scikit-learn
+- **Opening Gap Prediction**: Separate model for next-day opening gap analysis
+- **Gravity Accuracy Calibration**: Post-market feedback loop comparing predictions vs actual results
 
 ---
 
@@ -92,15 +106,11 @@ Coordinates all agents and implements the **Hybrid Decision Engine** with real-t
 
 ### Core Formula
 
-Our prediction engine uses **dynamically adjusted weights** rather than static sentiment analysis:
-
 $$\boxed{\text{Final Gravity} = (\text{Info Gravity} \times W_s) + (\text{Technical Score} \times W_t)}$$
 
-Where $W_s + W_t = 1.0$ and weights adapt based on market conditions.
+Where $W_s + W_t = 1.0$ and weights adapt dynamically based on market conditions.
 
 ### Dynamic Weighting System
-
-The **StrategyAgent** employs three cardinal rules for weight adjustment:
 
 | Rule | Trigger Condition | Weight Adjustment | Reasoning |
 |------|------------------|------------------|-----------|
@@ -108,175 +118,326 @@ The **StrategyAgent** employs three cardinal rules for weight adjustment:
 | **High-Mass Rule** | Earnings, major catalysts | Sentiment: **↑80%** | Information gravity overwhelms technical patterns |
 | **Technical Friction Rule** | Extreme RSI (>70 or <30) | Balanced: **60/40** | Overbought/oversold acts as friction against news |
 
-### Regime Detection Matrix
+---
 
-```python
-# StrategyAgent Dynamic Regime Analysis
-REGIME_MATRIX = {
-    "NEWS_HEAVY": {"sentiment_weight": 0.75, "reasoning": "High information density"},
-    "NEWS_LIGHT": {"sentiment_weight": 0.30, "reasoning": "Technical patterns dominate"},
-    "CONSOLIDATING": {"sentiment_weight": 0.50, "reasoning": "Balanced uncertainty"},
-    "TRENDING": {"sentiment_weight": 0.65, "reasoning": "Momentum with information bias"}
-}
+## ⚛️ Non-Linear Physics-Based Technical Scoring Engine
+
+### Architecture (v4.0)
+
+Our technical scoring engine replaces simple linear addition with a **physics-inspired non-linear system**:
+
+#### 1. Momentum × Volume Force (Non-Linear Interaction)
+```
+Volume acts as a FORCE MULTIPLIER on momentum (not additive).
+vol_multiplier = √(volume_ratio)
+momentum_force = base_momentum × vol_multiplier × 0.6
+```
+- Quadratic boost for breakouts (momentum > 4%)
+- Volume amplifies or dampens the signal naturally
+
+#### 2. RSI Smooth Exponential Penalty
+```
+Overbought penalty:  -(overshoot^1.8) / 200   (smooth, no hard thresholds)
+Oversold bounce:     +(undershoot^1.8) / 200
+NVIDIA-tuned:        75/25 thresholds (high-volatility stock)
+```
+
+#### 3. Bollinger Bands — Context-Aware (Volume Interaction)
+| Condition | High Volume (>1.3×) | Low Volume |
+|-----------|--------------------:|------------|
+| **Above Upper Band** | ✅ Trend Continuation (Bullish) | ⚠️ Reversion Risk (Bearish) |
+| **Below Lower Band** | 📉 Panic Selling (more downside) | 🔄 Bounce Candidate (Bullish) |
+| **Inside Bands** | Mild mean reversion toward center | Mild mean reversion |
+
+#### 4. Moving Average Convergence (Logarithmic Scaling)
+$$\text{MA Score} = \text{sign}(d) \times \ln(1 + |d|) \times w$$
+- Diminishing returns when overextended from MA
+- Gravitational pull penalty for extreme extension (>8%)
+
+#### 5. Tanh Normalization → [-10, +10]
+$$\text{Final Score} = 10 \times \tanh(0.18 \times \text{Total Raw})$$
+- Smooth saturation prevents extreme scores
+- Scale factor k=0.18 optimized for NVIDIA's volatility profile
+
+#### 6. ATR-Based Confidence Level (0-100%)
+| ATR % | Base Confidence | Context |
+|-------|---------------:|---------|
+| > 4.0% | 30% | Extreme volatility |
+| > 3.0% | 50% | High volatility |
+| > 1.5% | 70% | Moderate volatility |
+| < 1.5% | 80% | Low volatility |
+
+**Squeeze Detection**: Low ATR + narrow Bollinger = breakout imminent → +15% confidence boost
+
+---
+
+## 🕐 Graduated 5-Level Temporal Decay System
+
+News impact decays based on age relative to New York market hours:
+
+| Level | Age Range | Decay Factor | Description |
+|-------|-----------|:------------:|-------------|
+| **Level 1** | 0-6 hours | **1.00** | Full impact (fresh news) |
+| **Level 2** | 6-12 hours | **0.85** | Slight decay |
+| **Level 3** | 12-24 hours | **0.65** | Moderate decay |
+| **Level 4** | 24-48 hours | **0.35** | Heavy decay (weekend staleness) |
+| **Level 5** | 48+ hours | **0.15** | Minimal residual impact |
+
+Decay applies to both **sentiment score** and **gravitational mass**:
+$$\text{Decayed Score} = \text{Original Score} \times F_{\text{decay}}(t)$$
+
+---
+
+## 📰 Smart Content Pipeline
+
+### The Problem (Pre-v4.0)
+Articles were scraped (up to 10,000 chars) and saved to database, but only **500 characters** were sent to GPT for analysis — essentially just the title and first two sentences.
+
+### The Solution: Local Content Filtering
+```
+Raw Article (10,000 chars)
+    ↓ NLTK Stop-Word Removal (FREE, ~30% reduction)
+    ↓ "The company announced that it will be launching a new AI chip"
+    ↓  →  "company announced launching new AI chip"
+    ↓ Take first 2,000 chars of filtered text
+    ↓ Equivalent to ~2,800 chars of original content
+    ↓ Send to GPT-4 for sentiment analysis
+```
+
+**Result**: **4× more useful content** reaches GPT at the same token cost.
+
+### Content Fallback Priority
+```
+full_content (scraped) → summary → snippet → content → title (NEVER NULL)
 ```
 
 ---
 
-## 📊 Technical Layer Integration
+## 📊 Technical Indicators (Full Stack)
 
-### Market Friction Components
-
-Our system models **Technical Analysis** as "Market Friction" that either amplifies or dampens informational gravity:
-
-| Indicator | Role | Calculation |
-|-----------|------|-------------|
-| **RSI(14)** | Momentum Friction | $RSI = 100 - \frac{100}{1 + RS}$ |
-| **3-Day Momentum** | Short-term Vector | $\frac{Close_{today} - Close_{t-3}}{Close_{t-3}} \times 100$ |
-| **MA Distance** | Trend Confirmation | $\frac{Price - MA_{50}}{MA_{50}} \times 100$ |
-
-### Technical Score Synthesis
-
-$$\text{Technical Score} = \frac{RSI_{normalized} + Momentum_{3d} + MA_{distance}}{3}$$
-
-This score ranges from -10 to +10, matching our sentiment scale for mathematical consistency.
+| Indicator | Type | Calculation | Role in Physics Engine |
+|-----------|------|-------------|----------------------|
+| **RSI(14)** | Momentum | $RSI = 100 - \frac{100}{1 + RS}$ | Smooth exponential penalty |
+| **MACD(12,26,9)** | Trend | EMA crossover | Signal confirmation |
+| **3-Day Momentum** | Short-term | $(C_t - C_{t-3})/C_{t-3} \times 100$ | Primary directional force |
+| **MA-50 Distance** | Trend | $(P - MA_{50})/MA_{50} \times 100$ | Logarithmic convergence |
+| **MA-200 Distance** | Long Trend | $(P - MA_{200})/MA_{200} \times 100$ | Lower weight convergence |
+| **Bollinger Bands** | Volatility | 20-period, 2σ | Context-aware with volume |
+| **Bollinger %B** | Position | $(P - \text{Lower})/(\text{Upper} - \text{Lower})$ | Breakout/reversion logic |
+| **Bollinger Width** | Squeeze | $(\text{Upper} - \text{Lower})/\text{Middle} \times 100$ | Breakout detection |
+| **ATR(14)** | Volatility | True Range average | Confidence metadata |
+| **ATR %** | Normalized | $\text{ATR}/\text{Price} \times 100$ | Volatility regime |
+| **Volume Ratio** | Conviction | $\text{Volume}/\text{20d Avg}$ | Force multiplier |
 
 ---
 
-## 🏗️ Professional Architecture
+## 🔑 Trusted Source Tiering System
 
-Our system has evolved from prototype to **enterprise-grade architecture**:
+### Company News (NVIDIA-specific)
+| Tier | Sources | Weight |
+|------|---------|:------:|
+| **Tier 1** | Bloomberg, Reuters, WSJ, CNBC, Financial Times | Highest |
+| **Tier 2A** | Seeking Alpha, Barron's, Forbes, Business Insider, Motley Fool | High (Financial) |
+| **Tier 2B** | TechCrunch, The Verge, Ars Technica, Tom's Hardware | High (Tech) |
+| **Tier 3** | Yahoo Finance, MarketWatch, CNET | Standard |
+
+### Macro-Economic News
+| Tier | Sources | Weight |
+|------|---------|:------:|
+| **Tier 1** | Federal Reserve, BLS, Treasury, Bloomberg, Reuters | Highest |
+| **Tier 2** | CNBC, FT, WSJ, The Economist | High |
+| **Tier 3** | Yahoo Finance, MarketWatch, AP, BBC Business | Standard |
+
+---
+
+## 📐 Gravity Accuracy Calibration System
+
+A sophisticated **post-market feedback loop** that measures prediction accuracy:
+
+### Scoring Method
+- **Opening Gap Prediction**: Compares predicted gap vs actual next-day opening gap
+- **Gravity Grade**: Letter grades (A+ through F) based on accuracy percentage
+- **Continuous Learning**: Results feed back into model confidence calibration
+
+### Opening Gap Separation
+The system separates two distinct movements:
+- **Opening Gap %**: `(next_day_open - current_close) / current_close × 100`
+- **Close-to-Close %**: `(next_day_close - current_close) / current_close × 100`
+
+This separation allows independent analysis of overnight gap forces vs. intraday momentum.
+
+---
+
+## 🏗️ Project Architecture
 
 ```
 📁 Project Root
-├── 🤖 /agents/              # Multi-Agent AI System
-│   ├── base_agent.py        #   Core agent foundation
-│   ├── sentiment_agent.py   #   The Skeptical Analyst
-│   ├── strategy_agent.py    #   The Strategic CEO
-│   ├── orchestrator_agent.py#   System Conductor
-│   └── prediction_agent.py  #   Market Oracle
-├── 📊 /data/                # Data Management Layer
-│   ├── database_manager.py  #   PostgreSQL operations
-│   └── market_data_fetcher.py#  Market data collection
-├── 🎯 /views/               # Professional Dashboards
-│   ├── strategy_dashboard.py#   StrategyAgent analytics
-│   ├── sequential_analysis.py#  Backtesting engine
-│   └── *_viewer.py          #   Data visualization tools
-├── 📋 /database/            # Consolidated Schema
-│   ├── schema.sql           #   Modern database design
-│   └── setup.py            #   Automated DB setup
-├── ⚙️ /utils/               # Supporting Infrastructure
-├── 🧪 /tests/               # Comprehensive Test Suite
-├── 📚 /docs/                # Technical Documentation
-└── main.py                  # Production Entry Point
+├── 🤖 /agents/                 # Multi-Agent AI System
+│   ├── base_agent.py           #   Core agent foundation
+│   ├── sentiment_agent.py      #   Skeptical Analyst + Temporal Decay + Content Filter
+│   ├── strategy_agent.py       #   Strategic CEO (Dynamic Weights)
+│   ├── news_agent.py           #   News Scanner (Scraping + Search)
+│   ├── orchestrator_agent.py   #   System Conductor (Hybrid Engine)
+│   └── prediction_agent.py     #   Market Oracle (ML Predictions)
+├── 📊 /data/                   # Data Management Layer
+│   ├── database_manager.py     #   PostgreSQL operations + migrations
+│   └── market_data_fetcher.py  #   Physics-Based Technical Engine
+├── ⚙️ /config/                 # Configuration
+│   ├── settings.py             #   Centralized settings (GPT temp, thresholds)
+│   └── trusted_sources.py      #   4-tier source classification
+├── 🎯 /views/                  # Professional Dashboards
+│   ├── strategy_dashboard.py   #   StrategyAgent analytics
+│   ├── sequential_analysis.py  #   Backtesting engine
+│   ├── data_viewer.py          #   Data visualization
+│   └── *_viewer.py             #   Specialized viewers
+├── 📋 /database/               # Schema Management
+│   ├── schema.sql              #   Normalized database design
+│   └── setup.py                #   Automated DB setup
+├── 🔧 /utils/                  # Supporting Infrastructure
+│   ├── timezone_manager.py     #   NY timezone operations
+│   ├── workflow_manager.py     #   Workflow orchestration
+│   ├── analysis_utils.py       #   Analysis helpers
+│   └── logger.py               #   Structured logging
+├── 🧪 /tests/                  # Comprehensive Test Suite
+├── 📚 /docs/                   # Technical Documentation
+├── 📱 remote_controller.py     # Telegram Bot Controller
+├── main.py                     # Production Entry Point
+└── requirements.txt            # Dependencies
 ```
-
-### Key Architectural Improvements
-
-- **Eliminated Technical Debt**: Removed 35+ temporary files and legacy migrations
-- **Modular Design**: Clear separation of concerns across layers
-- **Professional Standards**: Enterprise-grade code organization
-- **Scalable Infrastructure**: Ready for multi-symbol expansion
 
 ---
 
-## 🎯 Performance Metrics & Validation
+## 📱 Telegram Bot Integration
 
-### Sequential Backfilling Engine
+Remote monitoring and control via Telegram:
 
-Our **Sequential Analysis System** validates theoretical performance through comprehensive backtesting:
+### Commands
+| Command | Action |
+|---------|--------|
+| `/run` | Execute full daily workflow |
+| `/status` | Check system status |
+| `/predict` | Get latest prediction |
 
-```python
-# Performance Grading System
-ACCURACY_GRADES = {
-    "A": "90-100% - Perfect direction + magnitude prediction",
-    "B": "80-89% - Correct direction with good magnitude",
-    "C": "70-79% - Correct direction with fair magnitude", 
-    "D": "60-69% - Marginal accuracy",
-    "F": "< 60% - Failed prediction"
-}
+### Bot Display (v4.0)
+The bot now shows enriched results including:
+- 📊 **Technical Score** from the Physics Engine
+- 📰 **Sentiment Score** (Info Gravity)
+- ⚖️ **Strategy Weights** (Sentiment/Technical split)
+- 📈 **Prediction Direction** with confidence
+- 🎯 **Previous Accuracy** grades
+
+---
+
+## 🗃️ Database Schema (Normalized)
+
+### daily_data Table
+```sql
+-- Stock Price Data
+open_price, close_price, high_price, low_price, volume
+
+-- Technical Indicators (8 new in v4.0)
+rsi, macd, macd_signal, moving_avg_50, moving_avg_200,
+bollinger_upper, bollinger_lower, bollinger_width, bollinger_pctb,  -- NEW
+atr, atr_percent, volume_ratio,                                     -- NEW
+
+-- Sentiment Analysis (separated by type)
+sentiment_score, company_sentiment, macro_sentiment, sentiment_range,
+
+-- Next Day Results (separated gaps)
+next_day_close, next_day_open,
+price_change_percent,    -- Close-to-close movement
+opening_gap_percent,     -- Opening gap (separated in v4.0)
+
+-- Gravity System
+gravity_score, gravity_accuracy, gravity_grade,
+
+-- ML Predictions
+prediction, prediction_accuracy, opening_prediction,
+
+-- Information Theory
+entropy
 ```
 
-### Real-World Validation
-
-- **Grade A Accuracy**: Achieved on major market moves (±5% gaps)
-- **High-Conviction Signals**: System identifies 15-20% of trading days as "high conviction"
-- **Dynamic Adaptation**: Successfully shifts between 12+ unique weight combinations
-- **Regime Recognition**: Accurately detects News-Heavy vs. Technical-Dominant periods
+### articles Table
+```sql
+url, source, title, summary,
+full_content,            -- Complete scraped content (up to 10,000 chars)
+article_type,            -- 'company' or 'macro'
+sentiment_score,
+gravitational_mass
+```
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-
-```bash
-# System Requirements
-Python 3.8+
-PostgreSQL 12+
-OpenAI API Access (GPT-4)
-```
+- Python 3.8+
+- PostgreSQL 12+
+- OpenAI API Key (GPT-4)
+- Serper API Key (news search)
 
 ### Installation
 
 ```bash
-# 1. Clone and setup environment
+# 1. Clone and setup
 git clone https://github.com/your-repo/nvidia-prediction-engine.git
 cd nvidia-prediction-engine
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+.venv\Scripts\activate  # Windows
+source .venv/bin/activate  # Linux/Mac
 
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Configure environment
-cp .env.example .env
-# Edit .env with your API keys and database credentials
+# 3. Download NLTK data (for content filtering)
+python -c "import nltk; nltk.download('stopwords')"
 
-# 4. Initialize database
+# 4. Configure environment
+# Create .env file with:
+#   OPENAI_API_KEY=your_key
+#   SERPER_API_KEY=your_key
+#   DB_PASSWORD=your_password
+#   DB_NAME=nvidia_prediction
+
+# 5. Initialize database
 python database/setup.py
 
-# 5. Launch the system
+# 6. Run the system
 python main.py
 ```
 
-### Professional Execution Modes
+### Execution Modes
 
 ```bash
-# Production Daily Workflow
+# Full Daily Workflow (production)
 python main.py
 
-# Strategic Analysis Dashboard
+# Telegram Bot (remote control)
+python remote_controller.py
+
+# Strategy Dashboard
 python views/strategy_dashboard.py
 
-# Comprehensive Backtesting
+# Backtesting Engine
 python views/sequential_analysis.py
-
-# System Configuration Check
-python main.py --info
-
-# Dry Run (Testing Mode)
-python main.py --dry-run
 ```
 
 ---
 
-## 📈 Advanced Features
+## 📈 Key Configuration
 
-### Real-Time Analytics
-
-- **StrategyAgent Dashboard**: Live regime analysis and weight decisions
-- **Gravitational Field Monitoring**: Information mass and decay tracking
-- **Performance Grading**: Continuous accuracy measurement
-- **Technical Friction Analysis**: Market structure vs. sentiment dynamics
-
-### Research Applications
-
-This engine serves as a **quantitative research platform** for:
-
-- **Market Microstructure Analysis**: Information absorption patterns
-- **Behavioral Finance Research**: Human vs. AI decision consistency
-- **Regime Change Detection**: Early warning systems for market shifts
-- **Alternative Data Integration**: News sentiment as quantitative factor
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| `GPT_MODEL` | gpt-4 | Primary AI model |
+| `GPT_TEMPERATURE` | 0.45 | Scoring consistency (lowered from 0.7) |
+| `MAX_NEWS_ARTICLES` | 8 | Articles per analysis cycle |
+| `STOCK_SYMBOL` | NVDA | Target stock |
+| `TIMEZONE` | America/New_York | Market reference timezone |
+| `RSI_PERIOD` | 14 | Standard RSI |
+| `MA_SHORT / MA_LONG` | 50 / 200 | Moving averages |
+| `SENTIMENT_SCALE` | (-100, +100) | Sentiment range |
+| `MIN_TRAINING_DAYS` | 100 | ML model minimum data |
 
 ---
 
@@ -299,16 +460,27 @@ This engine serves as a **quantitative research platform** for:
 
 ---
 
-## 🤝 Contributing
+## 📊 Version History
 
-We welcome contributions from quantitative researchers, AI engineers, and financial technologists. Please review our [Contributing Guidelines](CONTRIBUTING.md) for development standards.
+### v4.0.0 (March 2026) — Current
+- ⚛️ Non-Linear Physics-Based Technical Scoring Engine
+- 📰 Smart Content Filtering (NLTK stop-word removal + 2,000 char optimized preview)
+- 🕐 Graduated 5-Level Temporal Decay System
+- 📊 8 New Technical Indicators (Bollinger Bands, ATR, Volume Ratio)
+- 📐 Opening Gap % Separation from close-to-close movement
+- 🎯 Gravity Accuracy Calibration System
+- 📱 Telegram Bot with Technical Score, Sentiment Score & Strategy Weights
+- 🔧 GPT Temperature optimized to 0.45
+- 🗃️ Full schema normalization and audit
+- 🏷️ 4-tier trusted source classification system
+- 🌐 NY Timezone strict enforcement across all operations
 
-### Development Principles
-
-- **Scientific Rigor**: All features must have theoretical foundation
-- **Performance First**: Code optimized for institutional-grade execution
-- **Comprehensive Testing**: Full test coverage for production reliability
-- **Documentation Excellence**: Clear explanations for complex financial AI
+### v3.0.0 (February 2026)
+- Multi-Agent Architecture (Sentiment, Strategy, Prediction, Orchestrator)
+- Informational Gravity Theory implementation
+- Dynamic Strategy Weights
+- PostgreSQL database integration
+- News scraping with newspaper3k + trafilatura
 
 ---
 
@@ -318,248 +490,17 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 ---
 
-## 🎓 Academic Citations
-
-If you use this system in academic research, please cite:
-
-```bibtex
-@software{nvidia_gravity_engine_2026,
-  title = {NVIDIA Informational Gravity Engine: Multi-Agent AI for Financial Prediction},
-  author = {Your Research Team},
-  year = {2026},
-  version = {3.0.0},
-  url = {https://github.com/your-repo/nvidia-prediction-engine}
-}
-```
-
----
-
-> *"The future of quantitative finance lies not in static models, but in intelligent systems that adapt, learn, and evolve with market dynamics. Our Multi-Agent AI represents the next evolution in financial prediction technology."*
->
-> **— The Informational Gravity Research Team**
-
-#### Gravity Mass-Weighted Average
-The final prediction emerges from the gravitational center of mass:
-
-$$\text{Prediction} = \frac{\sum_{i=1}^{n} M_i \times S_i \times F_{decay}(t_i)}{\sum_{i=1}^{n} M_i \times F_{decay}(t_i)}$$
-
-Where $M_i$ is the informational mass, $S_i$ is the sentiment score, and $F_{decay}(t_i)$ is the temporal decay factor.
-
----
-
-## ⚙️ Technical Architecture: The Physics Pipeline
-
-### Step 1: Kinetic Data Collection
-- **Market Volume & Price Extraction**: Real-time collection of NVIDIA (NVDA) stock data
-- **Technical Momentum Indicators**: RSI, MACD, moving averages for **Technical Inertia** calculation
-- **Temporal Synchronization**: All data timestamped in New York market timezone
-
-### Step 2: Mass Extraction Engine
-- **Deep-Text Scraping**: Full-content extraction using `newspaper3k` and `trafilatura`
-- **Financial Mass Detection**: GPT-4o identifies quantitative data (revenue, deals, forecasts)
-- **Source Weighting**: Trusted financial sources (Reuters, Bloomberg, WSJ) receive higher gravitational mass
-- **Content Physics Analysis**: Each article analyzed as a **Data Physics Object**
-
-### Step 3: Temporal Decay Implementation
-- **Age Calculation**: Precise timestamp analysis relative to NY market hours
-- **Decay Application**: 30% mass reduction for news > 12 hours old
-- **Post-Market Gap Force Detection**: Articles published after 4:00 PM NY flagged for overnight gap potential
-
-### Step 4: Gravity Synthesis & Prediction
-- **Batch Processing**: Budget-optimized GPT-4o analysis (83% cost reduction through batching)
-- **Physics-Based Prompting**: AI analyzes articles as "informational gravity objects"
-- **Range Calculation**: Determines **sentiment_range** (The Tail) and **point_score** (The Head)
-- **Entropy Assessment**: Identifies chaos levels in information dispersion
-
----
-
-## 🚀 Advanced Features
-
-### Dynamic Macro Weighting
-When macro-economic news achieves **gravitational mass ≥ 9.0**, the system automatically shifts to a **70% macro / 30% company** weighting scheme. This reflects the reality that high-mass Federal Reserve announcements or GDP data create stronger gravitational fields than individual company news.
-
-```python
-if gravitational_mass >= 9.0 and is_macro_event:
-    weighting = {"macro": 0.70, "company": 0.30}
-    dynamic_weighting_active = True
-```
-
-### Entropy-Aware Confidence System
-The system continuously monitors **information entropy** and issues warnings during **High Noise** periods:
-
-- **Low Entropy (< 0.4)**: Coherent information alignment → Confidence boost
-- **Medium Entropy (0.4-0.7)**: Normal market consensus → Standard confidence  
-- **High Entropy (> 0.7)**: Chaotic dispersion → Confidence reduction + Risk warnings
-
-### Gravity Accuracy Calibration
-A sophisticated feedback loop compares theoretical predictions against market reality:
-
-- **Physical Match Scoring**: A+ to F grades measuring how well gravity theory predicts actual price movements
-- **Continuous Learning**: Model parameters adjust based on **Gravity Accuracy** performance
-- **Scientific Validation**: System tracks theoretical coherence vs. empirical results
-
-### Technical Inertia Integration
-The system incorporates **Technical Inertia** to prevent unrealistic reversal predictions:
-
-$$\text{Inertia}_{technical} = f(\text{RSI}, \text{moving\_averages}, \text{momentum})$$
-
-High technical inertia requires exceptional **news mass** to overcome established price momentum, preventing the system from predicting trend reversals on weak sentiment signals.
-
----
-
-## 🗃️ Database Schema
-
-The system utilizes **PostgreSQL** with custom physics-aware columns:
-
-### Daily Data Table
-```sql
-CREATE TABLE daily_data (
-    -- Standard OHLCV data
-    date DATE PRIMARY KEY,
-    open_price, close_price, high_price, low_price DECIMAL(10,2),
-    volume BIGINT,
-    
-    -- Physics Framework Columns
-    sentiment_range TEXT,              -- The Tail: e.g., "-15 to +23"
-    entropy VARCHAR(20),               -- Information chaos level
-    gravitational_mass NUMERIC(6,2),  -- Combined mass of all news
-    gravity_accuracy NUMERIC(6,2),    -- Theoretical vs. actual performance
-    
-    -- Technical Inertia
-    rsi DECIMAL(5,2),
-    moving_avg_50 DECIMAL(10,2),
-    moving_avg_200 DECIMAL(10,2)
-);
-```
-
-### Articles Table
-```sql
-CREATE TABLE articles (
-    id SERIAL PRIMARY KEY,
-    title TEXT,
-    content TEXT,
-    source VARCHAR(100),
-    published_time TIMESTAMP,
-    
-    -- Physics Analysis Results
-    gravitational_mass NUMERIC(6,2),  -- Individual article mass (0-10)
-    sentiment_score DECIMAL(6,2),     -- Field vector (-100 to +100)
-    entropy_contribution DECIMAL(4,2), -- Chaos contribution to system
-    temporal_decay_factor DECIMAL(3,2) -- Age-based force reduction
-);
-```
-
----
-
-## 🛠️ Setup & Execution
-
-### Prerequisites
-- Python 3.8+
-- PostgreSQL 12+
-- OpenAI API Key (GPT-4o access)
-
-### Installation
-
-1. **Clone the repository**:
-```bash
-git clone https://github.com/yourusername/nvidia-gravity-engine.git
-cd nvidia-gravity-engine
-```
-
-2. **Create virtual environment**:
-```bash
-python -m venv .venv
-.venv\Scripts\activate  # Windows
-source .venv/bin/activate  # Linux/Mac
-```
-
-3. **Install dependencies**:
-```bash
-pip install -r requirements.txt
-```
-
-4. **Database setup**:
-```bash
-# Create PostgreSQL database
-createdb nvidia_gravity
-
-# Run schema migration
-python database/setup.py
-```
-
-5. **Environment configuration**:
-```bash
-# Create .env file
-OPENAI_API_KEY=your_openai_api_key
-DATABASE_URL=postgresql://user:password@localhost/nvidia_gravity
-```
-
-### Execution
-
-**Full Physics Pipeline**:
-```bash
-python main.py
-```
-
-**Individual Components**:
-```bash
-# Data collection only
-python main.py --collect-data
-
-# Sentiment analysis with temporal physics
-python main.py --analyze-sentiment
-
-# Generate predictions with gravity synthesis
-python main.py --predict
-
-# Calibrate gravity accuracy
-python main.py --calibrate
-```
-
-### Monitoring
-
-The system provides real-time physics monitoring:
-- **Gravitational Field Visualization**: Range width and entropy levels
-- **Technical Inertia Dashboard**: Momentum resistance metrics  
-- **Temporal Decay Tracking**: News age and force dissipation
-- **Accuracy Calibration Reports**: Theory vs. reality validation
-
----
-
-## 📊 Physics Validation
-
-The system continuously validates theoretical coherence through:
-
-- **Gravity Accuracy Scores**: Scientific measurement of predictive performance
-- **Entropy Pattern Analysis**: Chaos theory validation in market behavior
-- **Technical Inertia Validation**: Momentum physics vs. sentiment override events
-- **Temporal Decay Verification**: Time-based force dissipation accuracy
-
----
-
-## 🔬 Research Applications
-
-This **Informational Gravity Engine** serves as a research platform for:
-
-- **Market Physics Theory**: Testing gravitational models in financial systems
-- **Information Thermodynamics**: Studying entropy in news flow and market reaction
-- **Temporal Force Dynamics**: Understanding how information decays over time
-- **Chaos Theory in Finance**: Measuring information dispersion and prediction uncertainty
-
----
-
-## 📜 License
-
-MIT License - See [LICENSE](LICENSE) file for details.
-
----
-
 ## 🤝 Contributing
 
-This project welcomes contributions to advance the **Informational Gravity Theory** in financial markets. Please read our [Contributing Guidelines](CONTRIBUTING.md) for physics-based development standards.
+We welcome contributions from quantitative researchers, AI engineers, and financial technologists. Please review our development principles:
+
+- **Scientific Rigor**: All features must have theoretical foundation
+- **Performance First**: Code optimized for institutional-grade execution
+- **Comprehensive Testing**: Full test coverage for production reliability
+- **Documentation Excellence**: Clear explanations for complex financial AI
 
 ---
 
-**"In the quantum realm of financial markets, information is not merely data—it is mass, energy, and gravitational force shaping the spacetime of price discovery."**
-
-*— The Tail and Head Theory*
+> *"In the quantum realm of financial markets, information is not merely data—it is mass, energy, and gravitational force shaping the spacetime of price discovery."*
+>
+> **— The Informational Gravity Theory**

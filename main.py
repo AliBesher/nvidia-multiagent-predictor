@@ -246,6 +246,8 @@ def print_workflow_results(result: dict):
         
         print(f"  Final Gravity: {hybrid_gravity:+.2f}")
         print(f"  Confidence: {hybrid_confidence}")
+        print(f"  Technical Score: {result.get('technical_score', 0.0):+.2f}")
+        print(f"  Sentiment Score: {result.get('info_gravity', 0.0):+.2f}")
         print(f"  Strategy: Sentiment {strategy_weights.get('sentiment', 0.6):.0%} | Technical {strategy_weights.get('technical', 0.4):.0%}")
     else:
         print(f"\n  ⚠️  Hybrid prediction not available")
