@@ -217,7 +217,9 @@ def print_workflow_results(result: dict):
         print(f"  Market Data: ✓ (already in database)")
     else:
         print(f"  Market Data: {'✓ (newly fetched)' if result['market_data_collected'] else '✗'}")
-    print(f"  Articles: {result['articles_collected']}")
+    company_count = result.get('company_article_count', 0)
+    macro_count = result.get('macro_article_count', 0)
+    print(f"  Articles: {result['articles_collected']} ({company_count} Company, {macro_count} Macro)")
     
     print(f"\nSentiment Analysis:")
     print(f"  Company: {result.get('company_sentiment', 0):.2f}")

@@ -115,6 +115,8 @@ class OrchestratorAgent(BaseAgent):
             # Step 2.5: Apply Israel timezone categorization logic
             categorized_articles = self._apply_israel_timezone_logic(company_articles, macro_articles)
             result["articles_collected"] = len(company_articles) + len(macro_articles)
+            result["company_article_count"] = len(company_articles)
+            result["macro_article_count"] = len(macro_articles)
             result["intraday_articles"] = categorized_articles["intraday_count"]
             result["gap_force_articles"] = categorized_articles["gap_force_count"]
             result["timezone_summary"] = categorized_articles["summary"]

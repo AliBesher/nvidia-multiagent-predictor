@@ -36,7 +36,7 @@ class SentimentAgent(BaseAgent):
         # PRIMARY TIMEZONE REFERENCE: New York (EST/EDT)
         self.ny_tz = pytz.timezone('America/New_York')
         self.israel_tz = pytz.timezone('Asia/Jerusalem')
-        self.batch_size = 16  # Optimized for budget
+        self.batch_size = 8  # Max 8 articles per GPT call to stay within token limits
         
         # Print timezone validation on initialization
         self._print_timezone_validation()
@@ -149,7 +149,12 @@ Return ONLY the JSON array, no additional text.
         
     def analyze_articles_by_type(self, company_articles: List[Dict], macro_articles: List[Dict]) -> Dict:
         """
-        Analyze company and macro articles separately and combine results
+        Analyze company and macro articles in SEPARATE GPT calls.
+        
+        This ensures:
+        1. No index mapping errors between company/macro results
+        2. Smaller payloads per GPT call (fewer token overflow risks)
+        3. GPT can focus on one article type per call
         
         Args:
             company_articles: List of NVIDIA-specific articles
@@ -158,32 +163,37 @@ Return ONLY the JSON array, no additional text.
         Returns:
             Combined sentiment analysis results with individual article details
         """
+        # Limit to 6 articles per type → guarantees exactly 2 GPT calls (1 company + 1 macro)
+        company_articles = company_articles[:6]
+        macro_articles = macro_articles[:6]
+        
         logger.info(f"Analyzing {len(company_articles)} company + {len(macro_articles)} macro articles")
+        trading_date = self.get_ny_trading_date()
         
-        # Combine all articles for temporal physics analysis
-        all_articles = company_articles + macro_articles
-        all_results = self.analyze_all_news_optimized(all_articles, self.get_ny_trading_date())
-        
-        # Separate results by type
+        # 🏢 SEPARATE CALL: Company articles (NVIDIA-specific)
         company_results = []
-        macro_results = []
-        
-        # Map results back to article types
-        for i, result in enumerate(all_results):
-            if i < len(company_articles):
-                company_results.append(result)
-                # Save individual sentiment score to article for database storage
+        if company_articles:
+            logger.info(f"📊 Analyzing {len(company_articles)} COMPANY articles...")
+            company_results = self.analyze_all_news_optimized(company_articles, trading_date)
+            # Save individual sentiment scores back to articles for DB storage
+            for i, result in enumerate(company_results):
                 if i < len(company_articles):
                     company_articles[i]['sentiment_score'] = result.get('point_score', 0.0)
-            else:
-                macro_results.append(result)
-                # Save individual sentiment score to article for database storage
-                macro_index = i - len(company_articles)
-                if macro_index < len(macro_articles):
-                    macro_articles[macro_index]['sentiment_score'] = result.get('point_score', 0.0)
+        
+        # 🌍 SEPARATE CALL: Macro articles (market/economy)
+        macro_results = []
+        if macro_articles:
+            logger.info(f"📊 Analyzing {len(macro_articles)} MACRO articles...")
+            macro_results = self.analyze_all_news_optimized(macro_articles, trading_date)
+            # Save individual sentiment scores back to articles for DB storage
+            for i, result in enumerate(macro_results):
+                if i < len(macro_articles):
+                    macro_articles[i]['sentiment_score'] = result.get('point_score', 0.0)
+        
+        # Combine all results for aggregate metrics
+        all_results = company_results + macro_results
         
         # 🏆 GOLDEN CALIBRATION - 65/35 Weighting Rule Implementation
-        # Calculate aggregate scores with enhanced weighting
         company_sentiment = self._calculate_weighted_score(company_results, 'company')
         macro_sentiment = self._calculate_weighted_score(macro_results, 'macro')
         
@@ -496,7 +506,6 @@ Return ONLY the JSON array, no additional text.
                 article['article_type'] = 'macro'
         
         logger.info(f"Article Classification: {company_count} Company, {macro_count} Macro")
-        print(f"📊 ARTICLE CLASSIFICATION: {company_count} Company, {macro_count} Macro")
         
         return {'company': company_count, 'macro': macro_count}
 
@@ -656,7 +665,8 @@ Content Length: {len(combined_content)} chars (Full Content: {'YES' if article.g
             # Extract JSON from response
             json_match = re.search(r'\[[\s\S]*\]', response)
             if not json_match:
-                logger.error("No JSON array found in AI response")
+                logger.error(f"No JSON array found in AI response. Response length: {len(response)} chars")
+                logger.error(f"Response preview: {response[:500]}")
                 return []
                 
             json_str = json_match.group(0)

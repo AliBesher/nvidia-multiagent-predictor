@@ -192,10 +192,6 @@ def parse_results(output):
                 last_section = 'ml'
             elif l.startswith("Articles:"):
                 data['articles'] = l.split(":", 1)[1].strip()
-            elif "ARTICLE CLASSIFICATION:" in l:
-                # "ARTICLE CLASSIFICATION: 3 Company, 2 Macro"
-                part = l.split(":", 1)[1].strip()
-                data['classification'] = part
             elif l.startswith("Company:") and 'company_sent' not in data:
                 data['company_sent'] = l.split(":", 1)[1].strip()
             elif l.startswith("Macro:") and 'macro_sent' not in data:
@@ -224,7 +220,6 @@ def parse_results(output):
                     data['opening_conf'] = conf
 
         articles = data.get('articles', '?')
-        cls = data.get('classification', '')
         date = data.get('date', '?')
         ml = data.get('ml_pred', 'N/A')
         ml_conf = data.get('ml_conf', 'N/A')
@@ -238,7 +233,7 @@ def parse_results(output):
 
         msg = (
             f"📅 Date: {date}\n"
-            f"📰 Articles: {articles} ({cls})\n"
+            f"📰 Articles: {articles}\n"
             f"\n"
             f"🔬 Hybrid: {hybrid}\n"
             f"   Confidence: {hybrid_conf}\n"
