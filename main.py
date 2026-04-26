@@ -207,25 +207,41 @@ def print_workflow_results(result: dict):
     print("\n" + "="*60)
     print("WORKFLOW RESULTS")
     print("="*60)
-    print(f"\nTrading Day: {result['date']}")
+    print(f"\nTrading Day: {result.get('date', 'Unknown')}")
     if result.get('ny_today'):
         print(f"News Date: {result['ny_today']}")
-    print(f"Status: {'✓ SUCCESS' if result['success'] else '✗ FAILED'}")
+    if result.get('prediction_target'):
+        context = result.get('prediction_context', '')
+        target = result.get('prediction_target', '?')
+        if context == "TODAY":
+            print(f"🎯 Prediction Target: {target} (TODAY's close)")
+        else:
+            print(f"🎯 Prediction Target: {target}")
+    print(f"Status: {'✓ SUCCESS' if result.get('success') else '✗ FAILED'}")
+    
+    # If early failure (missing keys), show errors and return early
+    if 'market_data_collected' not in result:
+        if result.get('errors'):
+            print(f"\nErrors:")
+            for error in result['errors']:
+                print(f"  - {error}")
+        print("="*60)
+        return
     
     print(f"\nData Collection:")
     if result.get('market_data_existed'):
         print(f"  Market Data: ✓ (already in database)")
     else:
-        print(f"  Market Data: {'✓ (newly fetched)' if result['market_data_collected'] else '✗'}")
+        print(f"  Market Data: {'✓ (newly fetched)' if result.get('market_data_collected') else '✗'}")
     company_count = result.get('company_article_count', 0)
     macro_count = result.get('macro_article_count', 0)
-    print(f"  Articles: {result['articles_collected']} ({company_count} Company, {macro_count} Macro)")
+    print(f"  Articles: {result.get('articles_collected', 0)} ({company_count} Company, {macro_count} Macro)")
     
     print(f"\nSentiment Analysis:")
     print(f"  Company: {result.get('company_sentiment', 0):.2f}")
     print(f"  Macro: {result.get('macro_sentiment', 0):.2f}")
-    print(f"  Combined: {result['sentiment_score']:.2f}/100")
-    print(f"  Confidence: {result['sentiment_confidence']}")
+    print(f"  Combined: {result.get('sentiment_score', 0):.2f}/100")
+    print(f"  Confidence: {result.get('sentiment_confidence', 'N/A')}")
     
     # Prediction section
     print(f"\n" + "-"*60)

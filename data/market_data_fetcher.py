@@ -395,29 +395,63 @@ class MarketDataFetcher:
     
     def get_last_trading_day(self) -> Optional[str]:
         """
-        Get the most recent trading day (handles weekends/holidays)
+        Get the most recent COMPLETED trading day (handles weekends/holidays).
+        
+        CRITICAL LOGIC: If the market is currently open, today's data is 
+        incomplete (close price not final). In that case, return the PREVIOUS 
+        completed trading day so predictions are based on confirmed data.
+        
+        Retries up to 3 times to handle transient Yahoo Finance failures.
         
         Returns:
             Date string in YYYY-MM-DD format or None if error
         """
-        try:
-            # Get last 5 days of data to ensure we catch the last trading day
-            df = self.ticker.history(period="5d")
-            
-            if df.empty:
-                logger.error("Cannot determine last trading day - no data available")
-                return None
-            
-            # Remove timezone and get the last date
-            df.index = df.index.tz_localize(None)
-            last_date = df.index[-1].strftime("%Y-%m-%d")
-            
-            logger.info(f"Last trading day: {last_date}")
-            return last_date
-            
-        except Exception as e:
-            logger.error(f"Error getting last trading day: {str(e)}")
-            return None
+        from utils.timezone_manager import get_market_state, get_ny_trading_date
+        
+        for attempt in range(3):
+            try:
+                # Get last 5 days of data to ensure we catch the last trading day
+                df = self.ticker.history(period="5d")
+                
+                if df is None or df.empty:
+                    logger.warning(f"Attempt {attempt+1}/3: No data from Yahoo Finance")
+                    import time; time.sleep(2)
+                    continue
+                
+                # Remove timezone and get dates
+                df.index = df.index.tz_localize(None)
+                
+                market_state = get_market_state()
+                ny_today = get_ny_trading_date()
+                last_date = df.index[-1].strftime("%Y-%m-%d")
+                
+                # If market is currently open OR pre-market AND Yahoo returned today's date,
+                # that means we have live/incomplete data — use the PREVIOUS day
+                # 
+                # MARKET_OPEN:  Close price not final yet → use previous day
+                # PRE_MARKET:   Yahoo may return today with pre-market data → use previous day
+                # POST_MARKET:  Today's close is FINAL → use today ✅
+                # WEEKEND:      Yahoo returns last Friday → use as-is ✅
+                if market_state in ("MARKET_OPEN", "PRE_MARKET") and last_date == ny_today:
+                    if len(df) >= 2:
+                        previous_date = df.index[-2].strftime("%Y-%m-%d")
+                        logger.info(f"⚠️  Market is {market_state} — today's data ({last_date}) is incomplete")
+                        logger.info(f"   Using last completed trading day: {previous_date}")
+                        logger.info(f"   Predictions will target TODAY's close ({ny_today})")
+                        return previous_date
+                    else:
+                        logger.warning(f"Market is {market_state} but only 1 day of data available")
+                        return last_date
+                
+                logger.info(f"Last trading day: {last_date} (market state: {market_state})")
+                return last_date
+                
+            except Exception as e:
+                logger.warning(f"Attempt {attempt+1}/3: Error getting last trading day: {str(e)}")
+                import time; time.sleep(2)
+        
+        logger.error("Failed to get last trading day after 3 attempts")
+        return None
     
     def calculate_opening_gap(self, close_date: str, open_date: Optional[str] = None) -> Optional[Dict]:
         """

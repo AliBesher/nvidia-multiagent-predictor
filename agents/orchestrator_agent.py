@@ -72,11 +72,22 @@ class OrchestratorAgent(BaseAgent):
         from zoneinfo import ZoneInfo
         ny_today = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
         
+        # Determine prediction target: if last_trading_day < today, we predict today's close
+        # If last_trading_day == today (post-market), we predict next day's close
+        if last_trading_day < ny_today:
+            prediction_target = ny_today
+            prediction_context = "TODAY"
+        else:
+            prediction_target = "next trading day"
+            prediction_context = "NEXT_DAY"
+        
         log_section_header(logger, f"Daily Workflow")
         
         result = {
             "date": last_trading_day,
             "ny_today": ny_today,
+            "prediction_target": prediction_target,
+            "prediction_context": prediction_context,
             "success": False,
             "is_trading_day": True,  # We're always working with a trading day's data
             "market_data_collected": False,
@@ -91,6 +102,7 @@ class OrchestratorAgent(BaseAgent):
             logger.info(f"{'='*60}")
             logger.info(f"Last Trading Day: {last_trading_day}")
             logger.info(f"NY Today: {ny_today}")
+            logger.info(f"Prediction Target: {prediction_target} ({prediction_context})")
             logger.info(f"{'='*60}")
             
             # Step 1: Check if market data already exists in database
